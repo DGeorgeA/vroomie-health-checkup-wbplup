@@ -1,163 +1,90 @@
-import React from "react";
-import * as Haptics from "expo-haptics";
-import { Pressable, StyleSheet, useColorScheme, View, Text } from "react-native";
-import ReanimatedSwipeable from "react-native-gesture-handler/ReanimatedSwipeable";
-import Animated, {
-  configureReanimatedLogger,
-  FadeIn,
-  SharedValue,
-  useAnimatedStyle,
-} from "react-native-reanimated";
-import Reanimated from "react-native-reanimated";
-import { appleRed, borderColor } from "@/constants/Colors";
-import { IconCircle } from "./IconCircle";
-import { IconSymbol } from "./IconSymbol";
 
-configureReanimatedLogger({ strict: false });
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { IconSymbol } from './IconSymbol';
+import { colors } from '@/styles/commonStyles';
 
-export default function ListItem({ listId }: { listId: string }) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-
-  const RightAction = (
-    prog: SharedValue<number>,
-    drag: SharedValue<number>
-  ) => {
-    const styleAnimation = useAnimatedStyle(() => ({
-      transform: [{ translateX: drag.value + 200 }],
-    }));
-
-    return (
-      <Pressable
-        onPress={() => {
-          if (process.env.EXPO_OS === "ios") {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          }
-          console.log("delete");
-        }}
-      >
-        <Reanimated.View style={[styleAnimation, styles.rightAction]}>
-          <IconSymbol name="trash.fill" size={24} color="white" />
-        </Reanimated.View>
-      </Pressable>
-    );
-  };
-
-  return (
-    <Animated.View entering={FadeIn}>
-      <ReanimatedSwipeable
-        key={listId}
-        friction={2}
-        enableTrackpadTwoFingerGesture
-        rightThreshold={40}
-        renderRightActions={RightAction}
-        overshootRight={false}
-        enableContextMenu
-      >
-        <View style={styles.listItemContainer}>
-          <Text style={[styles.listItemText, { color: isDark ? "#FFFFFF" : "#000000" }]}>{listId}</Text>
-        </View>
-
-      </ReanimatedSwipeable>
-    </Animated.View>
-  );
+interface ListItemProps {
+  title: string;
+  subtitle?: string;
+  icon?: string;
+  onPress?: () => void;
 }
 
-export const NicknameCircle = ({
-  nickname,
-  color,
-  index = 0,
-  isEllipsis = false,
-}: {
-  nickname: string;
-  color: string;
-  index?: number;
-  isEllipsis?: boolean;
-}) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-
-  return (
-    <Text
-      style={[
-        styles.nicknameCircle,
-        isEllipsis && styles.ellipsisCircle,
-        {
-          backgroundColor: color,
-          borderColor: isDark ? "#000000" : "#ffffff",
-          marginLeft: index > 0 ? -6 : 0,
-        },
-      ]}
-    >
-      {isEllipsis ? "..." : nickname[0].toUpperCase()}
-    </Text>
+export default function ListItem({ title, subtitle, icon, onPress }: ListItemProps) {
+  const content = (
+    <BlurView intensity={20} style={styles.container}>
+      <View style={styles.content}>
+        {icon && (
+          <View style={styles.iconContainer}>
+            <IconSymbol
+              ios_icon_name={icon}
+              android_material_icon_name={icon}
+              size={24}
+              color={colors.primary}
+            />
+          </View>
+        )}
+        <View style={styles.textContainer}>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+        </View>
+        <IconSymbol
+          ios_icon_name="chevron.right"
+          android_material_icon_name="chevron-right"
+          size={20}
+          color={colors.textSecondary}
+        />
+      </View>
+    </BlurView>
   );
-};
+
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        {content}
+      </TouchableOpacity>
+    );
+  }
+
+  return content;
+}
 
 const styles = StyleSheet.create({
-  listItemContainer: {
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
-    backgroundColor: "transparent",
-  },
-  listItemText: {
-    fontSize: 16,
-  },
-  rightAction: {
-    width: 200,
-    height: 65,
-    backgroundColor: appleRed,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  swipeable: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: borderColor,
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  leftContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    flexShrink: 1,
-  },
-  textContent: {
-    flexShrink: 1,
-  },
-  productCount: {
-    fontSize: 12,
-    color: "gray",
-  },
-  rightContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  nicknameContainer: {
-    flexDirection: "row",
-    marginRight: 4,
-  },
-  nicknameCircle: {
-    fontSize: 12,
-    color: "white",
+  container: {
+    backgroundColor: 'rgba(39, 39, 42, 0.6)',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "white",
-    borderRadius: 16,
-    padding: 1,
-    width: 24,
-    height: 24,
-    textAlign: "center",
-    lineHeight: 20,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    overflow: 'hidden',
+    marginVertical: 6,
   },
-  ellipsisCircle: {
-    lineHeight: 0,
-    marginLeft: -6,
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    gap: 12,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textContainer: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
 });

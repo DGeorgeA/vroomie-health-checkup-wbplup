@@ -1,36 +1,43 @@
-import React from "react";
-import { Pressable, StyleSheet, Alert } from "react-native";
-import { IconSymbol } from "@/components/IconSymbol";
-import { useTheme } from "@react-navigation/native";
 
-export function HeaderRightButton() {
-  const theme = useTheme();
+import React from 'react';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { IconSymbol } from './IconSymbol';
+import { colors } from '@/styles/commonStyles';
 
-  return (
-    <Pressable
-      onPress={() => Alert.alert("Not Implemented", "This feature is not implemented yet")}
-      style={styles.headerButtonContainer}
-    >
-      <IconSymbol ios_icon_name="plus" android_material_icon_name="add" color={theme.colors.primary} />
-    </Pressable>
-  );
-}
-
-export function HeaderLeftButton() {
-  const theme = useTheme();
+export default function HeaderButtons() {
+  const router = useRouter();
 
   return (
-    <Pressable
-      onPress={() => Alert.alert("Not Implemented", "This feature is not implemented yet")}
-      style={styles.headerButtonContainer}
-    >
-      <IconSymbol ios_icon_name="gear" android_material_icon_name="settings" color={theme.colors.primary} />
-    </Pressable>
+    <View style={styles.container}>
+      <TouchableOpacity
+        style={styles.button}
+        onPress={() => router.push('/')}
+      >
+        <IconSymbol
+          ios_icon_name="house.fill"
+          android_material_icon_name="home"
+          size={24}
+          color={colors.primary}
+        />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  headerButtonContainer: {
-    padding: 6,
+  container: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  button: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
   },
 });

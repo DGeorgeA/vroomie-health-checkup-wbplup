@@ -1,128 +1,62 @@
-import React from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextStyle,
-  useColorScheme,
-  ViewStyle,
-} from "react-native";
-import { appleBlue, zincColors } from "@/constants/Colors";
 
-type ButtonVariant = "filled" | "outline" | "ghost";
-type ButtonSize = "sm" | "md" | "lg";
+import React from 'react';
+import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { colors } from '@/styles/commonStyles';
 
 interface ButtonProps {
-  onPress?: () => void;
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  disabled?: boolean;
-  loading?: boolean;
-  children: React.ReactNode;
+  title: string;
+  onPress: () => void;
   style?: ViewStyle;
   textStyle?: TextStyle;
+  variant?: 'primary' | 'secondary';
 }
 
-export const Button: React.FC<ButtonProps> = ({
-  onPress,
-  variant = "filled",
-  size = "md",
-  disabled = false,
-  loading = false,
-  children,
-  style,
+export default function Button({ 
+  title, 
+  onPress, 
+  style, 
   textStyle,
-}) => {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
-
-  const sizeStyles: Record<
-    ButtonSize,
-    { height: number; fontSize: number; padding: number }
-  > = {
-    sm: { height: 36, fontSize: 14, padding: 12 },
-    md: { height: 44, fontSize: 16, padding: 16 },
-    lg: { height: 55, fontSize: 18, padding: 20 },
-  };
-
-  const getVariantStyle = () => {
-    const baseStyle: ViewStyle = {
-      borderRadius: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-    };
-
-    switch (variant) {
-      case "filled":
-        return {
-          ...baseStyle,
-          backgroundColor: isDark ? zincColors[50] : zincColors[900],
-        };
-      case "outline":
-        return {
-          ...baseStyle,
-          backgroundColor: "transparent",
-          borderWidth: 1,
-          borderColor: isDark ? zincColors[700] : zincColors[300],
-        };
-      case "ghost":
-        return {
-          ...baseStyle,
-          backgroundColor: "transparent",
-        };
-    }
-  };
-
-  const getTextColor = () => {
-    if (disabled) {
-      return isDark ? zincColors[500] : zincColors[400];
-    }
-
-    switch (variant) {
-      case "filled":
-        return isDark ? zincColors[900] : zincColors[50];
-      case "outline":
-      case "ghost":
-        return appleBlue;
-    }
-  };
-
+  variant = 'primary' 
+}: ButtonProps) {
   return (
-    <Pressable
+    <TouchableOpacity
+      style={[styles.button, style]}
       onPress={onPress}
-      disabled={disabled || loading}
-      style={[
-        getVariantStyle(),
-        {
-          height: sizeStyles[size].height,
-          paddingHorizontal: sizeStyles[size].padding,
-          opacity: disabled ? 0.5 : 1,
-        },
-        style,
-      ]}
+      activeOpacity={0.7}
     >
-      {loading ? (
-        <ActivityIndicator color={getTextColor()} />
-      ) : (
-        <Text
-          style={StyleSheet.flatten([
-            {
-              fontSize: sizeStyles[size].fontSize,
-              color: getTextColor(),
-              textAlign: "center",
-              marginBottom: 0,
-              fontWeight: "700",
-            },
-            textStyle,
-          ])}
-        >
-          {children}
+      <BlurView intensity={20} style={styles.blurContainer}>
+        <Text style={[
+          styles.text,
+          variant === 'secondary' && styles.textSecondary,
+          textStyle
+        ]}>
+          {title}
         </Text>
-      )}
-    </Pressable>
+      </BlurView>
+    </TouchableOpacity>
   );
-};
+}
 
-export default Button;
+const styles = StyleSheet.create({
+  button: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  blurContainer: {
+    backgroundColor: 'rgba(252, 211, 77, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.5)',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  text: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  textSecondary: {
+    color: colors.text,
+  },
+});
