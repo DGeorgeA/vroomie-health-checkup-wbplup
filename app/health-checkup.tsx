@@ -117,7 +117,7 @@ export default function HealthCheckUpScreen() {
 
       for (let i = 0; i < anomalyCount; i++) {
         const timestamp_ms = Math.floor(Math.random() * durationSeconds * 1000);
-        const severities: Array<'low' | 'medium' | 'high' | 'critical'> = ['low', 'medium', 'high', 'critical'];
+        const severities: ('low' | 'medium' | 'high' | 'critical')[] = ['low', 'medium', 'high', 'critical'];
         const rand = Math.random();
         let severity: 'low' | 'medium' | 'high' | 'critical';
         
