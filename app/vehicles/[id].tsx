@@ -78,6 +78,32 @@ export default function VehicleDetailScreen() {
             </View>
           </BlurView>
 
+          <TouchableOpacity
+            style={styles.checkupButton}
+            onPress={() => router.push('/health-checkup')}
+          >
+            <BlurView intensity={30} style={styles.checkupButtonBlur}>
+              <View style={styles.checkupButtonContent}>
+                <IconSymbol
+                  ios_icon_name="waveform.circle.fill"
+                  android_material_icon_name="graphic-eq"
+                  size={32}
+                  color={colors.primary}
+                />
+                <View style={styles.checkupButtonText}>
+                  <Text style={styles.checkupButtonTitle}>Start Health CheckUp</Text>
+                  <Text style={styles.checkupButtonSubtitle}>Record engine audio for analysis</Text>
+                </View>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={24}
+                  color={colors.primary}
+                />
+              </View>
+            </BlurView>
+          </TouchableOpacity>
+
           <Text style={styles.sectionTitle}>Analysis History</Text>
           
           {vehicleAnalyses.length === 0 ? (
@@ -90,67 +116,72 @@ export default function VehicleDetailScreen() {
                   color={colors.textSecondary}
                 />
                 <Text style={styles.emptyText}>No analyses yet</Text>
+                <Text style={styles.emptySubtext}>Start a health checkup to begin</Text>
               </View>
             </BlurView>
           ) : (
             <View style={styles.analysesList}>
               {vehicleAnalyses.map((analysis, index) => (
                 <React.Fragment key={index}>
-                  <BlurView intensity={20} style={styles.analysisCard}>
-                    <View style={styles.analysisContent}>
-                      <View style={styles.analysisHeader}>
-                        <View style={styles.analysisHeaderLeft}>
-                          <IconSymbol
-                            ios_icon_name={analysis.anomaly_detected ? 'exclamationmark.triangle.fill' : 'checkmark.circle.fill'}
-                            android_material_icon_name={analysis.anomaly_detected ? 'warning' : 'check-circle'}
-                            size={24}
-                            color={analysis.anomaly_detected ? '#F97316' : '#10B981'}
-                          />
-                          <Text style={styles.analysisDate}>
-                            {new Date(analysis.created_at).toLocaleDateString()}
-                          </Text>
-                        </View>
-                        <View
-                          style={[
-                            styles.scoreBadge,
-                            {
-                              backgroundColor: analysis.anomaly_detected
-                                ? 'rgba(249, 115, 22, 0.2)'
-                                : 'rgba(16, 185, 129, 0.2)',
-                            },
-                          ]}
-                        >
-                          <Text
+                  <TouchableOpacity
+                    onPress={() => router.push(`/analysis/${analysis.id}` as any)}
+                  >
+                    <BlurView intensity={20} style={styles.analysisCard}>
+                      <View style={styles.analysisContent}>
+                        <View style={styles.analysisHeader}>
+                          <View style={styles.analysisHeaderLeft}>
+                            <IconSymbol
+                              ios_icon_name={analysis.anomaly_detected ? 'exclamationmark.triangle.fill' : 'checkmark.circle.fill'}
+                              android_material_icon_name={analysis.anomaly_detected ? 'warning' : 'check-circle'}
+                              size={24}
+                              color={analysis.anomaly_detected ? '#F97316' : '#10B981'}
+                            />
+                            <Text style={styles.analysisDate}>
+                              {new Date(analysis.created_at).toLocaleDateString()}
+                            </Text>
+                          </View>
+                          <View
                             style={[
-                              styles.scoreText,
+                              styles.scoreBadge,
                               {
-                                color: analysis.anomaly_detected ? '#F97316' : '#10B981',
+                                backgroundColor: analysis.anomaly_detected
+                                  ? 'rgba(249, 115, 22, 0.2)'
+                                  : 'rgba(16, 185, 129, 0.2)',
                               },
                             ]}
                           >
-                            {analysis.anomaly_score}/100
-                          </Text>
+                            <Text
+                              style={[
+                                styles.scoreText,
+                                {
+                                  color: analysis.anomaly_detected ? '#F97316' : '#10B981',
+                                },
+                              ]}
+                            >
+                              {analysis.anomaly_score}/100
+                            </Text>
+                          </View>
+                        </View>
+                        
+                        <View style={styles.analysisStats}>
+                          <View style={styles.analysisStat}>
+                            <Text style={styles.analysisStatLabel}>Duration</Text>
+                            <Text style={styles.analysisStatValue}>{analysis.duration_seconds}s</Text>
+                          </View>
+                          <View style={styles.analysisStat}>
+                            <Text style={styles.analysisStatLabel}>Anomalies</Text>
+                            <Text style={styles.analysisStatValue}>{analysis.anomalies.length}</Text>
+                          </View>
+                          <View style={styles.analysisStat}>
+                            <Text style={styles.analysisStatLabel}>Status</Text>
+                            <Text style={styles.analysisStatValue}>
+                              {analysis.anomaly_detected ? 'Issue' : 'Healthy'}
+                            </Text>
+                          </View>
                         </View>
                       </View>
-                      
-                      <View style={styles.analysisStats}>
-                        <View style={styles.analysisStat}>
-                          <Text style={styles.analysisStatLabel}>Duration</Text>
-                          <Text style={styles.analysisStatValue}>{analysis.duration_seconds}s</Text>
-                        </View>
-                        <View style={styles.analysisStat}>
-                          <Text style={styles.analysisStatLabel}>Anomalies</Text>
-                          <Text style={styles.analysisStatValue}>{analysis.anomalies.length}</Text>
-                        </View>
-                        <View style={styles.analysisStat}>
-                          <Text style={styles.analysisStatLabel}>Status</Text>
-                          <Text style={styles.analysisStatValue}>
-                            {analysis.anomaly_detected ? 'Issue' : 'Healthy'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </BlurView>
+                    </BlurView>
+                  </TouchableOpacity>
                 </React.Fragment>
               ))}
             </View>
@@ -195,7 +226,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(252, 211, 77, 0.3)',
     overflow: 'hidden',
-    marginBottom: 32,
+    marginBottom: 16,
   },
   vehicleHeaderContent: {
     padding: 32,
@@ -236,6 +267,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
+  checkupButton: {
+    marginBottom: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  checkupButtonBlur: {
+    backgroundColor: 'rgba(39, 39, 42, 0.6)',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.5)',
+  },
+  checkupButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    gap: 16,
+  },
+  checkupButtonText: {
+    flex: 1,
+  },
+  checkupButtonTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  checkupButtonSubtitle: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -257,6 +317,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
     marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 4,
   },
   analysesList: {
     gap: 12,

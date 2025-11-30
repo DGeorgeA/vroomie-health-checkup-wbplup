@@ -1,126 +1,116 @@
 
-import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from './IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from 'react-native-reanimated';
 
 interface GlassCardProps {
   title: string;
-  description?: string;
+  description: string;
   icon: string;
-  onPress?: () => void;
+  onPress: () => void;
   delay?: number;
 }
 
-export default function GlassCard({ title, description, icon, onPress, delay = 0 }: GlassCardProps) {
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(0);
+const GlassCard: React.FC<GlassCardProps> = ({ title, description, icon, onPress, delay = 0 }) => {
+  const [opacity] = useState(new Animated.Value(0));
+  const [scale] = useState(new Animated.Value(0.9));
 
-  React.useEffect(() => {
-    setTimeout(() => {
-      opacity.value = withSpring(1, { damping: 15 });
-    }, delay);
-  }, [delay, opacity]);
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 500,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        delay,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 7,
+      }),
+    ]).start();
+  }, [opacity, scale, delay]);
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-      opacity: opacity.value,
+  const getIconNames = (iconName: string) => {
+    const iconMap: Record<string, { ios: string; android: string }> = {
+      'waveform': { ios: 'waveform', android: 'graphic-eq' },
+      'list-bullet': { ios: 'list.bullet', android: 'list' },
+      'car': { ios: 'car.fill', android: 'directions-car' },
     };
-  });
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.95);
+    return iconMap[iconName] || { ios: iconName, android: iconName };
   };
 
-  const handlePressOut = () => {
-    scale.value = withSpring(1);
-  };
+  const iconNames = getIconNames(icon);
 
-  const content = (
-    <Animated.View style={[styles.card, animatedStyle]}>
-      <BlurView intensity={20} style={styles.blurContainer}>
-        <View style={styles.cardContent}>
+  return (
+    <Animated.View style={{ opacity, transform: [{ scale }] }}>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
+        <BlurView intensity={20} style={styles.cardContainer}>
           <View style={styles.iconContainer}>
             <IconSymbol
-              ios_icon_name={icon}
-              android_material_icon_name={icon}
+              ios_icon_name={iconNames.ios}
+              android_material_icon_name={iconNames.android}
               size={32}
               color={colors.primary}
             />
           </View>
-          <Text style={styles.title}>{title}</Text>
-          {description && <Text style={styles.description}>{description}</Text>}
-        </View>
-      </BlurView>
+          <View style={styles.textContainer}>
+            <Text style={styles.title}>{title}</Text>
+            <Text style={styles.description}>{description}</Text>
+          </View>
+          <IconSymbol
+            ios_icon_name="chevron.right"
+            android_material_icon_name="chevron-right"
+            size={24}
+            color={colors.textSecondary}
+          />
+        </BlurView>
+      </TouchableOpacity>
     </Animated.View>
   );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={1}
-      >
-        {content}
-      </TouchableOpacity>
-    );
-  }
-
-  return content;
-}
+};
 
 const styles = StyleSheet.create({
-  card: {
-    marginVertical: 8,
-    borderRadius: 16,
-    overflow: 'hidden',
-    ...Platform.select({
-      web: {
-        backdropFilter: 'blur(10px)',
-      },
-    }),
-  },
-  blurContainer: {
+  cardContainer: {
     backgroundColor: 'rgba(39, 39, 42, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(252, 211, 77, 0.3)',
     borderRadius: 16,
-    overflow: 'hidden',
-  },
-  cardContent: {
     padding: 20,
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(252, 211, 77, 0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(252, 211, 77, 0.3)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    overflow: 'hidden',
+  },
+  iconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+  },
+  textContainer: {
+    flex: 1,
   },
   title: {
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
-    textAlign: 'center',
   },
   description: {
     fontSize: 14,
     color: colors.textSecondary,
-    textAlign: 'center',
+    lineHeight: 18,
   },
 });
+
+export default GlassCard;
