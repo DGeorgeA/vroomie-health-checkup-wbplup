@@ -1,21 +1,4 @@
 
-export interface Vehicle {
-  id: string;
-  user_id: string;
-  make: string;
-  model: string;
-  year: number;
-  registration_number: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Anomaly {
-  timestamp_ms: number;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  frequency_range: string;
-}
-
 export interface AudioAnalysis {
   id: string;
   vehicle_id: string;
@@ -27,12 +10,8 @@ export interface AudioAnalysis {
   created_at: string;
 }
 
-export interface MechanicReport {
-  id: string;
-  analysis_id: string;
+export interface Anomaly {
+  timestamp_ms: number;
   severity: 'low' | 'medium' | 'high' | 'critical';
-  estimated_cost: number;
-  issue_summary: string;
-  recommended_actions: string[];
-  created_at: string;
+  frequency_range: string;
 }

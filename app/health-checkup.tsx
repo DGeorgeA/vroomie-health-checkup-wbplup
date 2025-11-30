@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from '@/components/IconSymbol';
-import TopNavigation from '@/components/TopNavigation';
+import VroomieLogo from '@/components/VroomieLogo';
 import { colors } from '@/styles/commonStyles';
 import {
   useAudioRecorder,
@@ -14,21 +14,21 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
-import { mockAnalyses, mockVehicles } from '@/data/mockData';
+import { mockAnalyses } from '@/data/mockData';
 import { AudioAnalysis, Anomaly } from '@/types/entities';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const WAVEFORM_WIDTH = Platform.OS === 'web' ? SCREEN_WIDTH * 0.5 : SCREEN_WIDTH - 40;
 const WAVEFORM_HEIGHT = Platform.OS === 'web' ? 300 : 200;
 
 export default function HealthCheckUpScreen() {
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
-  const [analyses, setAnalyses] = useState<AudioAnalysis[]>(mockAnalyses);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(mockVehicles[0]?.id || '1');
+  const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
@@ -36,21 +36,27 @@ export default function HealthCheckUpScreen() {
 
   useEffect(() => {
     requestPermissions();
+    loadSettings();
   }, []);
+
+  const loadSettings = async () => {
+    const saved = await AsyncStorage.getItem('logoRotationDisabled');
+    if (saved) {
+      setLogoRotationDisabled(JSON.parse(saved));
+    }
+  };
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isRecording) {
+    if (isRecording && !isPaused) {
       interval = setInterval(() => {
         setRecordingTime(Math.floor((Date.now() - recordingStartTime.current) / 1000));
       }, 100);
-    } else {
-      setRecordingTime(0);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isRecording]);
+  }, [isRecording, isPaused]);
 
   const requestPermissions = async () => {
     try {
@@ -81,6 +87,7 @@ export default function HealthCheckUpScreen() {
       audioRecorder.record();
       recordingStartTime.current = Date.now();
       setIsRecording(true);
+      setIsPaused(false);
       console.log('Recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -88,11 +95,33 @@ export default function HealthCheckUpScreen() {
     }
   };
 
+  const pauseRecording = async () => {
+    try {
+      await audioRecorder.pause();
+      setIsPaused(true);
+      console.log('Recording paused');
+    } catch (error) {
+      console.error('Error pausing recording:', error);
+    }
+  };
+
+  const resumeRecording = async () => {
+    try {
+      audioRecorder.record();
+      setIsPaused(false);
+      console.log('Recording resumed');
+    } catch (error) {
+      console.error('Error resuming recording:', error);
+    }
+  };
+
   const stopRecording = async () => {
     try {
       await audioRecorder.stop();
       setIsRecording(false);
+      setIsPaused(false);
       console.log('Recording stopped');
+      await saveAnalysis();
     } catch (error) {
       console.error('Error stopping recording:', error);
       Alert.alert('Error', 'Failed to stop recording.');
@@ -111,13 +140,12 @@ export default function HealthCheckUpScreen() {
       const durationSeconds = recordingTime;
       
       // Simulate anomaly detection
-      const anomalyCount = Math.floor(Math.random() * 4) + 1; // 1-4 anomalies
+      const anomalyCount = Math.floor(Math.random() * 4) + 1;
       const anomalies: Anomaly[] = [];
       let hasHighOrCritical = false;
 
       for (let i = 0; i < anomalyCount; i++) {
         const timestamp_ms = Math.floor(Math.random() * durationSeconds * 1000);
-        const severities: ('low' | 'medium' | 'high' | 'critical')[] = ['low', 'medium', 'high', 'critical'];
         const rand = Math.random();
         let severity: 'low' | 'medium' | 'high' | 'critical';
         
@@ -148,7 +176,7 @@ export default function HealthCheckUpScreen() {
 
       const newAnalysis: AudioAnalysis = {
         id: `analysis-${Date.now()}`,
-        vehicle_id: selectedVehicleId,
+        vehicle_id: 'default',
         audio_file_url: audioRecorder.uri,
         duration_seconds: durationSeconds,
         anomaly_detected: hasHighOrCritical,
@@ -157,16 +185,19 @@ export default function HealthCheckUpScreen() {
         created_at: new Date().toISOString(),
       };
 
-      setAnalyses(prev => [newAnalysis, ...prev]);
+      mockAnalyses.unshift(newAnalysis);
       
       setTimeout(() => {
         setIsSaving(false);
+        setRecordingTime(0);
         Alert.alert(
           'Health CheckUp Completed',
-          'View Report',
+          hasHighOrCritical 
+            ? `Issues detected! Anomaly score: ${anomalyScore}/100`
+            : `Engine sounds healthy! Score: ${anomalyScore}/100`,
           [
-            { text: 'View Now', onPress: () => router.push(`/analysis/${newAnalysis.id}` as any) },
-            { text: 'Later', style: 'cancel' },
+            { text: 'View Reports', onPress: () => router.push('/reports') },
+            { text: 'Done', style: 'cancel' },
           ]
         );
       }, 1500);
@@ -184,212 +215,210 @@ export default function HealthCheckUpScreen() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleBack = () => {
+    if (isRecording) {
+      Alert.alert(
+        'Recording in Progress',
+        'Stop recording before going back?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Stop & Go Back', onPress: async () => {
+            await stopRecording();
+            router.back();
+          }},
+        ]
+      );
+    } else {
+      router.back();
+    }
+  };
+
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#18181b', '#27272a', '#18181b']}
+        colors={['#18181B', '#27272a', '#18181B']}
         style={styles.gradient}
       >
-        <TopNavigation />
-        
-        <View style={styles.mainContent}>
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.contentContainer}
-            showsVerticalScrollIndicator={false}
+        {/* Minimal Top Bar */}
+        <View style={styles.topBar}>
+          <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={handleBack}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
           >
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => router.back()}
-            >
+            <IconSymbol
+              ios_icon_name="chevron.left"
+              android_material_icon_name="arrow-back"
+              size={20}
+              color={colors.primary}
+            />
+            <Text style={styles.backText}>Back</Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.title}>Health CheckUp</Text>
+          <Text style={styles.subtitle}>Record your engine audio for AI analysis</Text>
+
+          {/* Waveform Container */}
+          <BlurView intensity={20} style={styles.waveformContainer}>
+            <View style={styles.waveformContent}>
+              <Text style={styles.waveformTitle}>Live Audio Monitor</Text>
+              
+              <View style={styles.waveformCanvas}>
+                {/* Scan-line grid */}
+                <View style={styles.gridLines}>
+                  {[...Array(5)].map((_, i) => (
+                    <View key={i} style={styles.gridLine} />
+                  ))}
+                </View>
+                
+                {/* Waveform bars */}
+                <View style={styles.waveform}>
+                  {[...Array(50)].map((_, index) => (
+                    <React.Fragment key={index}>
+                      <WaveBar 
+                        index={index} 
+                        isRecording={isRecording && !isPaused}
+                        time={recordingTime}
+                      />
+                    </React.Fragment>
+                  ))}
+                </View>
+
+                {/* Ambient pulse overlay */}
+                {isRecording && !isPaused && (
+                  <View style={styles.pulseOverlay} />
+                )}
+              </View>
+
+              {isRecording && (
+                <View style={styles.recordingIndicator}>
+                  <View style={[styles.recordingDot, isPaused && styles.recordingDotPaused]} />
+                  <Text style={styles.recordingTime}>{formatTime(recordingTime)}</Text>
+                  {isPaused && <Text style={styles.pausedText}>PAUSED</Text>}
+                </View>
+              )}
+
+              {!isRecording && (
+                <Text style={styles.waveformHint}>Press Start Recording to begin</Text>
+              )}
+            </View>
+          </BlurView>
+
+          {/* Controls */}
+          <View style={styles.controls}>
+            {!isRecording ? (
+              <TouchableOpacity
+                style={styles.recordButton}
+                onPress={startRecording}
+                disabled={!hasPermission}
+                accessibilityLabel="Start recording"
+                accessibilityRole="button"
+              >
+                <BlurView intensity={30} style={styles.recordButtonBlur}>
+                  <LinearGradient
+                    colors={['rgba(252, 211, 77, 0.3)', 'rgba(252, 211, 77, 0.1)']}
+                    style={styles.recordButtonGradient}
+                  >
+                    <IconSymbol
+                      ios_icon_name="mic.circle.fill"
+                      android_material_icon_name="mic"
+                      size={56}
+                      color={hasPermission ? colors.primary : colors.textSecondary}
+                    />
+                    <Text style={styles.recordButtonText}>
+                      {hasPermission ? 'Start Recording' : 'Permission Required'}
+                    </Text>
+                  </LinearGradient>
+                </BlurView>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.activeControls}>
+                {!isPaused ? (
+                  <TouchableOpacity
+                    style={styles.pauseButton}
+                    onPress={pauseRecording}
+                    accessibilityLabel="Pause recording"
+                    accessibilityRole="button"
+                  >
+                    <BlurView intensity={30} style={styles.controlButtonBlur}>
+                      <IconSymbol
+                        ios_icon_name="pause.circle.fill"
+                        android_material_icon_name="pause-circle"
+                        size={48}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.controlButtonText}>Pause</Text>
+                    </BlurView>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.resumeButton}
+                    onPress={resumeRecording}
+                    accessibilityLabel="Resume recording"
+                    accessibilityRole="button"
+                  >
+                    <BlurView intensity={30} style={styles.controlButtonBlur}>
+                      <IconSymbol
+                        ios_icon_name="play.circle.fill"
+                        android_material_icon_name="play-circle"
+                        size={48}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.controlButtonText}>Resume</Text>
+                    </BlurView>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={styles.stopButton}
+                  onPress={stopRecording}
+                  disabled={isSaving}
+                  accessibilityLabel="Stop recording"
+                  accessibilityRole="button"
+                >
+                  <BlurView intensity={30} style={styles.stopButtonBlur}>
+                    <IconSymbol
+                      ios_icon_name="stop.circle.fill"
+                      android_material_icon_name="stop-circle"
+                      size={48}
+                      color="#EF4444"
+                    />
+                    <Text style={styles.stopButtonText}>
+                      {isSaving ? 'Analyzing...' : 'Stop & Analyze'}
+                    </Text>
+                  </BlurView>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Instructions */}
+          <BlurView intensity={20} style={styles.instructionsCard}>
+            <View style={styles.instructionsContent}>
               <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
                 size={24}
                 color={colors.primary}
               />
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.title}>Health CheckUp</Text>
-            <Text style={styles.subtitle}>Record your engine audio for AI analysis</Text>
-
-            {/* Waveform Container */}
-            <BlurView intensity={20} style={styles.waveformContainer}>
-              <View style={styles.waveformContent}>
-                <Text style={styles.waveformTitle}>Live Audio Monitor</Text>
-                
-                <View style={styles.waveformCanvas}>
-                  <View style={styles.gridLines}>
-                    {[...Array(5)].map((_, i) => (
-                      <View key={i} style={styles.gridLine} />
-                    ))}
-                  </View>
-                  
-                  <View style={styles.waveform}>
-                    {[...Array(40)].map((_, index) => (
-                      <React.Fragment key={index}>
-                        <WaveBar 
-                          index={index} 
-                          isRecording={isRecording}
-                          time={recordingTime}
-                        />
-                      </React.Fragment>
-                    ))}
-                  </View>
-                </View>
-
-                {isRecording && (
-                  <View style={styles.recordingIndicator}>
-                    <View style={styles.recordingDot} />
-                    <Text style={styles.recordingTime}>{formatTime(recordingTime)}</Text>
-                  </View>
-                )}
-
-                {!isRecording && recordingTime === 0 && (
-                  <Text style={styles.waveformHint}>Press Start Recording to begin</Text>
-                )}
+              <Text style={styles.instructionsTitle}>Recording Tips</Text>
+              <View style={styles.instructionsList}>
+                <Text style={styles.instructionItem}>- Start your engine and let it idle</Text>
+                <Text style={styles.instructionItem}>- Hold phone near engine bay</Text>
+                <Text style={styles.instructionItem}>- Record for 30-60 seconds</Text>
+                <Text style={styles.instructionItem}>- Minimize background noise</Text>
               </View>
-            </BlurView>
-
-            {/* Controls */}
-            <View style={styles.controls}>
-              {!isRecording && !recorderState.isRecording ? (
-                <TouchableOpacity
-                  style={styles.recordButton}
-                  onPress={startRecording}
-                  disabled={!hasPermission}
-                >
-                  <BlurView intensity={30} style={styles.recordButtonBlur}>
-                    <View style={styles.recordButtonContent}>
-                      <IconSymbol
-                        ios_icon_name="mic.circle.fill"
-                        android_material_icon_name="mic"
-                        size={48}
-                        color={hasPermission ? colors.primary : colors.textSecondary}
-                      />
-                      <Text style={styles.recordButtonText}>
-                        {hasPermission ? 'Start Recording' : 'Permission Required'}
-                      </Text>
-                    </View>
-                  </BlurView>
-                </TouchableOpacity>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={[styles.recordButton, styles.stopButton]}
-                    onPress={stopRecording}
-                  >
-                    <BlurView intensity={30} style={styles.stopButtonBlur}>
-                      <View style={styles.recordButtonContent}>
-                        <IconSymbol
-                          ios_icon_name="stop.circle.fill"
-                          android_material_icon_name="stop-circle"
-                          size={48}
-                          color="#EF4444"
-                        />
-                        <Text style={styles.recordButtonText}>Stop Recording</Text>
-                      </View>
-                    </BlurView>
-                  </TouchableOpacity>
-
-                  {audioRecorder.uri && !isRecording && (
-                    <TouchableOpacity
-                      style={styles.saveButton}
-                      onPress={saveAnalysis}
-                      disabled={isSaving}
-                    >
-                      <BlurView intensity={30} style={styles.saveButtonBlur}>
-                        <View style={styles.saveButtonContent}>
-                          <IconSymbol
-                            ios_icon_name="checkmark.circle.fill"
-                            android_material_icon_name="check-circle"
-                            size={32}
-                            color={colors.primary}
-                          />
-                          <Text style={styles.saveButtonText}>
-                            {isSaving ? 'Analyzing...' : 'Save Analysis'}
-                          </Text>
-                        </View>
-                      </BlurView>
-                    </TouchableOpacity>
-                  )}
-                </>
-              )}
             </View>
-
-            {/* Instructions */}
-            <BlurView intensity={20} style={styles.instructionsCard}>
-              <View style={styles.instructionsContent}>
-                <IconSymbol
-                  ios_icon_name="info.circle"
-                  android_material_icon_name="info"
-                  size={24}
-                  color={colors.primary}
-                />
-                <Text style={styles.instructionsTitle}>Recording Tips</Text>
-                <View style={styles.instructionsList}>
-                  <Text style={styles.instructionItem}>- Start your engine and let it idle</Text>
-                  <Text style={styles.instructionItem}>- Hold phone near engine bay</Text>
-                  <Text style={styles.instructionItem}>- Record for 30-60 seconds</Text>
-                  <Text style={styles.instructionItem}>- Minimize background noise</Text>
-                </View>
-              </View>
-            </BlurView>
-          </ScrollView>
-
-          {/* History Panel */}
-          <View style={[styles.historyPanel, Platform.OS === 'web' && styles.historyPanelWeb]}>
-            <BlurView intensity={30} style={styles.historyPanelBlur}>
-              <View style={styles.historyHeader}>
-                <Text style={styles.historyTitle}>Recent Analyses</Text>
-                <IconSymbol
-                  ios_icon_name="clock.fill"
-                  android_material_icon_name="history"
-                  size={20}
-                  color={colors.primary}
-                />
-              </View>
-              
-              <ScrollView 
-                style={styles.historyList}
-                showsVerticalScrollIndicator={false}
-              >
-                {analyses.slice(0, 5).map((analysis, index) => (
-                  <React.Fragment key={index}>
-                    <TouchableOpacity
-                      style={styles.historyItem}
-                      onPress={() => router.push(`/analysis/${analysis.id}` as any)}
-                    >
-                      <View style={styles.historyItemLeft}>
-                        <IconSymbol
-                          ios_icon_name={analysis.anomaly_detected ? 'exclamationmark.triangle.fill' : 'checkmark.circle.fill'}
-                          android_material_icon_name={analysis.anomaly_detected ? 'warning' : 'check-circle'}
-                          size={20}
-                          color={analysis.anomaly_detected ? '#F97316' : '#10B981'}
-                        />
-                        <View style={styles.historyItemInfo}>
-                          <Text style={styles.historyItemTime}>
-                            {new Date(analysis.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </Text>
-                          <Text style={styles.historyItemStatus}>
-                            {analysis.anomaly_detected ? 'Issues Found' : 'Healthy'}
-                          </Text>
-                        </View>
-                      </View>
-                      <IconSymbol
-                        ios_icon_name="chevron.right"
-                        android_material_icon_name="chevron-right"
-                        size={16}
-                        color={colors.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </React.Fragment>
-                ))}
-              </ScrollView>
-            </BlurView>
-          </View>
-        </View>
+          </BlurView>
+        </ScrollView>
       </LinearGradient>
     </View>
   );
@@ -421,6 +450,10 @@ const WaveBar = ({ index, isRecording, time }: { index: number; isRecording: boo
         {
           height,
           backgroundColor: isRecording ? colors.primary : 'rgba(252, 211, 77, 0.3)',
+          shadowColor: isRecording ? colors.primary : 'transparent',
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.8,
+          shadowRadius: 4,
         },
       ]}
     />
@@ -435,35 +468,46 @@ const styles = StyleSheet.create({
   gradient: {
     flex: 1,
   },
-  mainContent: {
-    flex: 1,
-    flexDirection: Platform.OS === 'web' ? 'row' : 'column',
-    marginTop: Platform.OS === 'android' ? 80 : 0,
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 48 : Platform.OS === 'ios' ? 60 : 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(252, 211, 77, 0.1)',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+  },
+  backText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
   },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 100 : 20,
-    paddingBottom: Platform.OS === 'web' ? 40 : 200,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-    gap: 8,
-  },
-  backText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.primary,
+    paddingTop: 32,
+    paddingBottom: 40,
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
     color: colors.text,
     marginBottom: 8,
+    fontStyle: 'italic',
   },
   subtitle: {
     fontSize: 16,
@@ -472,12 +516,17 @@ const styles = StyleSheet.create({
   },
   waveformContainer: {
     backgroundColor: 'rgba(39, 39, 42, 0.8)',
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 24,
+    borderWidth: 2,
     borderColor: 'rgba(252, 211, 77, 0.3)',
     overflow: 'hidden',
     marginBottom: 24,
-    height: Platform.OS === 'web' ? 350 : 280,
+    height: WAVEFORM_HEIGHT + 120,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
   },
   waveformContent: {
     padding: 20,
@@ -493,7 +542,7 @@ const styles = StyleSheet.create({
   waveformCanvas: {
     flex: 1,
     backgroundColor: '#0a0a0a',
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -523,12 +572,20 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     minHeight: 4,
   },
+  pulseOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(252, 211, 77, 0.05)',
+  },
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 16,
-    gap: 8,
+    gap: 12,
   },
   recordingDot: {
     width: 12,
@@ -536,10 +593,19 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     backgroundColor: '#EF4444',
   },
+  recordingDotPaused: {
+    backgroundColor: colors.primary,
+  },
   recordingTime: {
     fontSize: 24,
     fontWeight: '700',
     color: colors.primary,
+  },
+  pausedText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 2,
   },
   waveformHint: {
     fontSize: 14,
@@ -548,56 +614,75 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   controls: {
-    gap: 12,
     marginBottom: 24,
   },
   recordButton: {
-    borderRadius: 16,
+    borderRadius: 24,
     overflow: 'hidden',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
   },
   recordButtonBlur: {
-    backgroundColor: 'rgba(39, 39, 42, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(252, 211, 77, 0.3)',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.5)',
   },
-  recordButtonContent: {
-    padding: 24,
+  recordButtonGradient: {
+    padding: 32,
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
   },
   recordButtonText: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: colors.text,
   },
-  stopButton: {
-    borderWidth: 2,
-    borderColor: '#EF4444',
+  activeControls: {
+    flexDirection: 'row',
+    gap: 12,
   },
-  stopButtonBlur: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 0,
-  },
-  saveButton: {
+  pauseButton: {
+    flex: 1,
     borderRadius: 16,
     overflow: 'hidden',
   },
-  saveButtonBlur: {
-    backgroundColor: 'rgba(39, 39, 42, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(252, 211, 77, 0.5)',
+  resumeButton: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  saveButtonContent: {
-    padding: 16,
-    flexDirection: 'row',
+  stopButton: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  controlButtonBlur: {
+    backgroundColor: 'rgba(39, 39, 42, 0.8)',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.4)',
+    padding: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
+    gap: 8,
   },
-  saveButtonText: {
-    fontSize: 16,
+  stopButtonBlur: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    borderWidth: 2,
+    borderColor: '#EF4444',
+    padding: 20,
+    alignItems: 'center',
+    gap: 8,
+  },
+  controlButtonText: {
+    fontSize: 14,
     fontWeight: '700',
     color: colors.text,
+  },
+  stopButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#EF4444',
   },
   instructionsCard: {
     backgroundColor: 'rgba(39, 39, 42, 0.6)',
@@ -625,75 +710,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
-  },
-  historyPanel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 180,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-  historyPanelWeb: {
-    position: 'relative',
-    width: 320,
-    height: 'auto',
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
-    borderRadius: 16,
-    margin: 20,
-    marginTop: Platform.OS === 'ios' ? 100 : 20,
-  },
-  historyPanelBlur: {
-    flex: 1,
-    backgroundColor: 'rgba(39, 39, 42, 0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(252, 211, 77, 0.3)',
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(252, 211, 77, 0.2)',
-  },
-  historyTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  historyList: {
-    flex: 1,
-  },
-  historyItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(252, 211, 77, 0.1)',
-  },
-  historyItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  historyItemInfo: {
-    flex: 1,
-  },
-  historyItemTime: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 2,
-  },
-  historyItemStatus: {
-    fontSize: 12,
-    color: colors.textSecondary,
   },
 });

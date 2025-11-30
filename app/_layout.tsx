@@ -1,83 +1,52 @@
 
-import "react-native-reanimated";
-import React, { useEffect } from "react";
-import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
-import { SystemBars } from "react-native-edge-to-edge";
-import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { useColorScheme, Alert } from "react-native";
-import { useNetworkState } from "expo-network";
-import { DarkTheme, Theme, ThemeProvider } from "@react-navigation/native";
-import { StatusBar } from "expo-status-bar";
-import { WidgetProvider } from "@/contexts/WidgetContext";
-import { ToastContainer } from "@/components/ToastContainer";
+import { Stack } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { View, TouchableWithoutFeedback, Platform } from 'react-native';
+import { colors } from '@/styles/commonStyles';
+import * as SplashScreen from 'expo-splash-screen';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 SplashScreen.preventAutoHideAsync();
 
-export const unstable_settings = {
-  initialRouteName: "(tabs)",
-};
-
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const networkState = useNetworkState();
-  const [loaded] = useFonts({
-    SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
-  });
+  const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
 
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+    SplashScreen.hideAsync();
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    const saved = await AsyncStorage.getItem('logoRotationDisabled');
+    if (saved) {
+      setLogoRotationDisabled(JSON.parse(saved));
     }
-  }, [loaded]);
+  };
 
-  React.useEffect(() => {
-    if (
-      !networkState.isConnected &&
-      networkState.isInternetReachable === false
-    ) {
-      Alert.alert(
-        "🔌 You are offline",
-        "You can keep using the app! Your changes will be saved locally and synced when you are back online."
-      );
+  const handleGlobalTap = () => {
+    if (!logoRotationDisabled) {
+      // Trigger logo rotation via event or state management
+      // For now, individual logos handle their own rotation on tap
+      console.log('Global tap detected');
     }
-  }, [networkState.isConnected, networkState.isInternetReachable]);
-
-  if (!loaded) {
-    return null;
-  }
-
-  const VroomieTheme: Theme = {
-    ...DarkTheme,
-    colors: {
-      primary: "#FCD34D",
-      background: "#18181B",
-      card: "#27272a",
-      text: "#FFFFFF",
-      border: "rgba(252, 211, 77, 0.3)",
-      notification: "#F97316",
-    },
   };
 
   return (
-    <>
-      <StatusBar style="light" animated />
-      <ThemeProvider value={VroomieTheme}>
-        <WidgetProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="health-checkup" options={{ headerShown: false }} />
-              <Stack.Screen name="reports" options={{ headerShown: false }} />
-              <Stack.Screen name="vehicles" options={{ headerShown: false }} />
-              <Stack.Screen name="+not-found" options={{ headerShown: false }} />
-            </Stack>
-            <SystemBars style="light" />
-            <ToastContainer />
-          </GestureHandlerRootView>
-        </WidgetProvider>
-      </ThemeProvider>
-    </>
+    <TouchableWithoutFeedback onPress={handleGlobalTap}>
+      <View style={{ flex: 1 }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: 'fade',
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="health-checkup" />
+          <Stack.Screen name="reports" />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
