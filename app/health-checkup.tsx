@@ -16,6 +16,25 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
+// Wave bar component to fix the hook usage issue
+const WaveBar = ({ index, isRecording, waveAmplitude }: { index: number; isRecording: boolean; waveAmplitude: Animated.SharedValue<number> }) => {
+  const animatedStyle = useAnimatedStyle(() => {
+    const delay = index * 0.05;
+    const height = isRecording
+      ? 20 + Math.sin(waveAmplitude.value * Math.PI + delay * 10) * 40
+      : 20;
+    return {
+      height: withTiming(height, { duration: 100 }),
+    };
+  });
+
+  return (
+    <Animated.View
+      style={[styles.waveBar, animatedStyle]}
+    />
+  );
+};
+
 export default function HealthCheckUpScreen() {
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
@@ -43,7 +62,7 @@ export default function HealthCheckUpScreen() {
       waveAmplitude.value = 0;
       setRecordingTime(0);
     }
-  }, [isRecording]);
+  }, [isRecording, waveAmplitude]);
 
   const toggleRecording = () => {
     setIsRecording(!isRecording);
@@ -89,25 +108,15 @@ export default function HealthCheckUpScreen() {
               <Text style={styles.waveformTitle}>Audio Waveform</Text>
               
               <View style={styles.waveform}>
-                {[...Array(20)].map((_, index) => {
-                  const animatedStyle = useAnimatedStyle(() => {
-                    const delay = index * 0.05;
-                    const height = isRecording
-                      ? 20 + Math.sin(waveAmplitude.value * Math.PI + delay * 10) * 40
-                      : 20;
-                    return {
-                      height: withTiming(height, { duration: 100 }),
-                    };
-                  });
-
-                  return (
-                    <React.Fragment key={index}>
-                      <Animated.View
-                        style={[styles.waveBar, animatedStyle]}
-                      />
-                    </React.Fragment>
-                  );
-                })}
+                {[...Array(20)].map((_, index) => (
+                  <React.Fragment key={index}>
+                    <WaveBar 
+                      index={index} 
+                      isRecording={isRecording} 
+                      waveAmplitude={waveAmplitude}
+                    />
+                  </React.Fragment>
+                ))}
               </View>
 
               {isRecording && (

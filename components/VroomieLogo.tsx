@@ -37,7 +37,7 @@ export default function VroomieLogo({ size = 120 }: VroomieLogoProps) {
       -1,
       true
     );
-  }, []);
+  }, [rotation, scale]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {

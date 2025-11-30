@@ -26,7 +26,7 @@ export default function GlassCard({ title, description, icon, onPress, delay = 0
     setTimeout(() => {
       opacity.value = withSpring(1, { damping: 15 });
     }, delay);
-  }, [delay]);
+  }, [delay, opacity]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {
