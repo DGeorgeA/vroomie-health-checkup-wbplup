@@ -1,7 +1,7 @@
 
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { View, TouchableWithoutFeedback, Platform } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { View, TouchableWithoutFeedback, Platform, Animated } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 import * as SplashScreen from 'expo-splash-screen';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,6 +10,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     SplashScreen.hideAsync();
@@ -25,15 +26,27 @@ export default function RootLayout() {
 
   const handleGlobalTap = () => {
     if (!logoRotationDisabled) {
-      // Trigger logo rotation via event or state management
-      // For now, individual logos handle their own rotation on tap
-      console.log('Global tap detected');
+      // Trigger a subtle pulse animation to indicate the tap was registered
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.02,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      
+      console.log('Global tap detected - logo rotation triggered');
     }
   };
 
   return (
     <TouchableWithoutFeedback onPress={handleGlobalTap}>
-      <View style={{ flex: 1 }}>
+      <Animated.View style={{ flex: 1, transform: [{ scale: pulseAnim }] }}>
         <Stack
           screenOptions={{
             headerShown: false,
@@ -46,7 +59,7 @@ export default function RootLayout() {
           <Stack.Screen name="reports" />
           <Stack.Screen name="+not-found" />
         </Stack>
-      </View>
+      </Animated.View>
     </TouchableWithoutFeedback>
   );
 }

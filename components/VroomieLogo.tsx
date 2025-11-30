@@ -1,27 +1,31 @@
 
-import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Animated, TouchableOpacity, Platform } from 'react-native';
-import Svg, { Path, G, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import React, { useEffect, useState } from 'react';
+import { View, StyleSheet, Animated, TouchableOpacity, Image, Platform } from 'react-native';
 import { colors } from '@/styles/commonStyles';
 
 interface VroomieLogoProps {
   size?: number;
   disableRotation?: boolean;
+  onRotate?: () => void;
 }
 
-const VroomieLogo: React.FC<VroomieLogoProps> = ({ size = 100, disableRotation = false }) => {
+const VroomieLogo: React.FC<VroomieLogoProps> = ({ 
+  size = 100, 
+  disableRotation = false,
+  onRotate 
+}) => {
   const [rotation] = useState(new Animated.Value(0));
   const [pulse] = useState(new Animated.Value(1));
-  const rotationRef = useRef(rotation);
-
-  useEffect(() => {
-    rotationRef.current = rotation;
-  }, [rotation]);
 
   const handlePress = () => {
     if (disableRotation) return;
 
-    // Rotate 360 degrees
+    // Trigger callback if provided
+    if (onRotate) {
+      onRotate();
+    }
+
+    // Rotate 360 degrees with GPU-accelerated transform
     Animated.timing(rotation, {
       toValue: 1,
       duration: 800,
@@ -33,7 +37,7 @@ const VroomieLogo: React.FC<VroomieLogoProps> = ({ size = 100, disableRotation =
     // Pulse animation
     Animated.sequence([
       Animated.timing(pulse, {
-        toValue: 1.2,
+        toValue: 1.15,
         duration: 150,
         useNativeDriver: true,
       }),
@@ -62,100 +66,17 @@ const VroomieLogo: React.FC<VroomieLogoProps> = ({ size = 100, disableRotation =
       <Animated.View
         style={{
           transform: [{ rotate: rotateInterpolate }, { scale: pulse }],
+          width: size,
+          height: size,
         }}
       >
-        <Svg width={size} height={size} viewBox="0 0 120 120">
-          <Defs>
-            <SvgLinearGradient id="carGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0%" stopColor={colors.primary} stopOpacity="1" />
-              <Stop offset="100%" stopColor={colors.primary} stopOpacity="0.6" />
-            </SvgLinearGradient>
-          </Defs>
-
-          {/* Speed streaks */}
-          <G opacity="0.6">
-            <Path
-              d="M 15 45 L 35 45"
-              stroke={colors.primary}
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <Path
-              d="M 10 55 L 30 55"
-              stroke={colors.primary}
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-            <Path
-              d="M 12 65 L 32 65"
-              stroke={colors.primary}
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </G>
-
-          {/* Car silhouette */}
-          <G>
-            {/* Car body */}
-            <Path
-              d="M 40 70 L 45 55 L 55 50 L 75 50 L 85 55 L 90 70 Z"
-              fill="url(#carGradient)"
-              stroke={colors.primary}
-              strokeWidth="2"
-            />
-            
-            {/* Windshield */}
-            <Path
-              d="M 55 50 L 58 58 L 72 58 L 75 50"
-              fill="rgba(24, 24, 27, 0.8)"
-              stroke={colors.primary}
-              strokeWidth="1.5"
-            />
-
-            {/* Wheels */}
-            <G>
-              {/* Front wheel */}
-              <Path
-                d="M 50 70 A 8 8 0 1 1 50 70.01"
-                fill={colors.background}
-                stroke={colors.primary}
-                strokeWidth="3"
-              />
-              <Path
-                d="M 50 70 A 4 4 0 1 1 50 70.01"
-                fill={colors.primary}
-              />
-              
-              {/* Rear wheel */}
-              <Path
-                d="M 80 70 A 8 8 0 1 1 80 70.01"
-                fill={colors.background}
-                stroke={colors.primary}
-                strokeWidth="3"
-              />
-              <Path
-                d="M 80 70 A 4 4 0 1 1 80 70.01"
-                fill={colors.primary}
-              />
-            </G>
-
-            {/* Motion lines behind car */}
-            <G opacity="0.4">
-              <Path
-                d="M 35 60 L 40 60"
-                stroke={colors.primary}
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-              <Path
-                d="M 32 65 L 38 65"
-                stroke={colors.primary}
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </G>
-          </G>
-        </Svg>
+        <Image
+          source={require('@/assets/images/d2ca792b-7544-44b6-bec0-7ed32f16f9ab.png')}
+          style={[styles.image, { width: size, height: size }]}
+          resizeMode="contain"
+        />
+        {/* Glow effect */}
+        <View style={[styles.glow, { width: size * 1.2, height: size * 1.2 }]} />
       </Animated.View>
     </TouchableOpacity>
   );
@@ -165,6 +86,19 @@ const styles = StyleSheet.create({
   container: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  image: {
+    borderRadius: 8,
+  },
+  glow: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: '-50%' }, { translateY: '-50%' }],
+    backgroundColor: colors.primary,
+    opacity: 0.1,
+    borderRadius: 100,
+    zIndex: -1,
   },
 });
 

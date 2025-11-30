@@ -1,6 +1,18 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, Dimensions } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ScrollView, 
+  Platform, 
+  Alert, 
+  Dimensions,
+  Modal,
+  Animated,
+  StatusBar,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -18,8 +30,9 @@ import { mockAnalyses } from '@/data/mockData';
 import { AudioAnalysis, Anomaly } from '@/types/entities';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const WAVEFORM_HEIGHT = Platform.OS === 'web' ? 300 : 200;
+const IS_MOBILE = Platform.OS === 'ios' || Platform.OS === 'android';
 
 export default function HealthCheckUpScreen() {
   const router = useRouter();
@@ -29,10 +42,17 @@ export default function HealthCheckUpScreen() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [countdown, setCountdown] = useState(0);
+  const [showSuccessPanel, setShowSuccessPanel] = useState(false);
+  const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
+  const [permissionError, setPermissionError] = useState(false);
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
   const recordingStartTime = useRef<number>(0);
+  const fullScreenAnim = useRef(new Animated.Value(0)).current;
+  const backPressCount = useRef(0);
 
   useEffect(() => {
     requestPermissions();
@@ -63,25 +83,36 @@ export default function HealthCheckUpScreen() {
       const { granted } = await requestRecordingPermissionsAsync();
       if (granted) {
         setHasPermission(true);
+        setPermissionError(false);
         await setAudioModeAsync({
           playsInSilentMode: true,
           allowsRecording: true,
         });
       } else {
-        Alert.alert('Permission Denied', 'Microphone access is required for audio recording.');
+        setHasPermission(false);
+        setPermissionError(true);
       }
     } catch (error) {
       console.error('Error requesting permissions:', error);
-      Alert.alert('Error', 'Failed to request microphone permissions.');
+      setPermissionError(true);
     }
   };
 
-  const startRecording = async () => {
-    if (!hasPermission) {
-      await requestPermissions();
-      return;
-    }
+  const startCountdown = () => {
+    setCountdown(3);
+    const countdownInterval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          startRecordingAfterCountdown();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
+  const startRecordingAfterCountdown = async () => {
     try {
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
@@ -92,7 +123,29 @@ export default function HealthCheckUpScreen() {
     } catch (error) {
       console.error('Error starting recording:', error);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
+      setIsFullScreen(false);
     }
+  };
+
+  const startRecording = async () => {
+    if (!hasPermission) {
+      await requestPermissions();
+      return;
+    }
+
+    // Enter full-screen mode on mobile
+    if (IS_MOBILE) {
+      setIsFullScreen(true);
+      Animated.spring(fullScreenAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 50,
+        friction: 8,
+      }).start();
+    }
+
+    // Start countdown
+    startCountdown();
   };
 
   const pauseRecording = async () => {
@@ -139,7 +192,7 @@ export default function HealthCheckUpScreen() {
     try {
       const durationSeconds = recordingTime;
       
-      // Simulate anomaly detection
+      // Generate delightful mini-analysis result
       const anomalyCount = Math.floor(Math.random() * 4) + 1;
       const anomalies: Anomaly[] = [];
       let hasHighOrCritical = false;
@@ -186,20 +239,12 @@ export default function HealthCheckUpScreen() {
       };
 
       mockAnalyses.unshift(newAnalysis);
+      setLastAnalysisId(newAnalysis.id);
       
       setTimeout(() => {
         setIsSaving(false);
         setRecordingTime(0);
-        Alert.alert(
-          'Health CheckUp Completed',
-          hasHighOrCritical 
-            ? `Issues detected! Anomaly score: ${anomalyScore}/100`
-            : `Engine sounds healthy! Score: ${anomalyScore}/100`,
-          [
-            { text: 'View Reports', onPress: () => router.push('/reports') },
-            { text: 'Done', style: 'cancel' },
-          ]
-        );
+        setShowSuccessPanel(true);
       }, 1500);
 
     } catch (error) {
@@ -216,16 +261,31 @@ export default function HealthCheckUpScreen() {
   };
 
   const handleBack = () => {
-    if (isRecording) {
+    if (isFullScreen) {
+      // First press: exit full-screen mode
+      if (backPressCount.current === 0) {
+        backPressCount.current = 1;
+        exitFullScreen();
+        setTimeout(() => {
+          backPressCount.current = 0;
+        }, 2000);
+      } else {
+        // Second press: go back to dashboard
+        router.back();
+      }
+    } else if (isRecording) {
       Alert.alert(
         'Recording in Progress',
         'Stop recording before going back?',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Stop & Go Back', onPress: async () => {
-            await stopRecording();
-            router.back();
-          }},
+          { 
+            text: 'Stop & Go Back', 
+            onPress: async () => {
+              await stopRecording();
+              router.back();
+            }
+          },
         ]
       );
     } else {
@@ -233,6 +293,290 @@ export default function HealthCheckUpScreen() {
     }
   };
 
+  const exitFullScreen = () => {
+    Animated.timing(fullScreenAnim, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setIsFullScreen(false);
+    });
+  };
+
+  const handleViewReport = () => {
+    setShowSuccessPanel(false);
+    exitFullScreen();
+    router.push('/reports');
+  };
+
+  const handleReturnHome = () => {
+    setShowSuccessPanel(false);
+    exitFullScreen();
+    router.back();
+  };
+
+  // Full-screen immersive mode for mobile
+  if (isFullScreen && IS_MOBILE) {
+    const scale = fullScreenAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0.8, 1],
+    });
+
+    const opacity = fullScreenAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, 1],
+    });
+
+    return (
+      <Modal
+        visible={isFullScreen}
+        animationType="none"
+        transparent={false}
+        onRequestClose={handleBack}
+      >
+        <StatusBar hidden />
+        <View style={styles.fullScreenContainer}>
+          <LinearGradient
+            colors={['#000000', '#18181B', '#000000']}
+            style={styles.fullScreenGradient}
+          >
+            {/* Dim overlay */}
+            <View style={styles.dimOverlay} />
+
+            {/* Top bar */}
+            <Animated.View style={[styles.fullScreenTopBar, { opacity }]}>
+              <TouchableOpacity
+                style={styles.fullScreenBackButton}
+                onPress={handleBack}
+                accessibilityLabel="Go back"
+                accessibilityRole="button"
+              >
+                <IconSymbol
+                  ios_icon_name="chevron.left"
+                  android_material_icon_name="arrow-back"
+                  size={24}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+
+              <Text style={styles.fullScreenTimer}>{formatTime(recordingTime)}</Text>
+
+              <VroomieLogo size={56} disableRotation={logoRotationDisabled} />
+            </Animated.View>
+
+            {/* Countdown */}
+            {countdown > 0 && (
+              <Animated.View style={[styles.countdownContainer, { opacity, transform: [{ scale }] }]}>
+                <Text style={styles.countdownText}>{countdown}</Text>
+              </Animated.View>
+            )}
+
+            {/* Waveform */}
+            {countdown === 0 && (
+              <Animated.View style={[styles.fullScreenWaveformContainer, { opacity, transform: [{ scale }] }]}>
+                <View style={styles.fullScreenWaveform}>
+                  {/* Grid lines */}
+                  <View style={styles.gridLines}>
+                    {[...Array(8)].map((_, i) => (
+                      <View key={i} style={styles.gridLine} />
+                    ))}
+                  </View>
+                  
+                  {/* Waveform bars */}
+                  <View style={styles.waveform}>
+                    {[...Array(60)].map((_, index) => (
+                      <React.Fragment key={index}>
+                        <WaveBar 
+                          index={index} 
+                          isRecording={isRecording && !isPaused}
+                          time={recordingTime}
+                        />
+                      </React.Fragment>
+                    ))}
+                  </View>
+
+                  {/* Ambient pulse */}
+                  {isRecording && !isPaused && (
+                    <View style={styles.pulseOverlay} />
+                  )}
+                </View>
+
+                {isPaused && (
+                  <Text style={styles.fullScreenPausedText}>PAUSED</Text>
+                )}
+              </Animated.View>
+            )}
+
+            {/* Bottom controls */}
+            {countdown === 0 && (
+              <Animated.View style={[styles.fullScreenControls, { opacity }]}>
+                {!isPaused ? (
+                  <TouchableOpacity
+                    style={styles.fullScreenControlButton}
+                    onPress={pauseRecording}
+                    accessibilityLabel="Pause recording"
+                    accessibilityRole="button"
+                  >
+                    <BlurView intensity={40} style={styles.fullScreenControlBlur}>
+                      <IconSymbol
+                        ios_icon_name="pause.circle.fill"
+                        android_material_icon_name="pause-circle"
+                        size={64}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.fullScreenControlText}>Pause</Text>
+                    </BlurView>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.fullScreenControlButton}
+                    onPress={resumeRecording}
+                    accessibilityLabel="Resume recording"
+                    accessibilityRole="button"
+                  >
+                    <BlurView intensity={40} style={styles.fullScreenControlBlur}>
+                      <IconSymbol
+                        ios_icon_name="play.circle.fill"
+                        android_material_icon_name="play-circle"
+                        size={64}
+                        color={colors.primary}
+                      />
+                      <Text style={styles.fullScreenControlText}>Resume</Text>
+                    </BlurView>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  style={styles.fullScreenControlButton}
+                  onPress={stopRecording}
+                  disabled={isSaving}
+                  accessibilityLabel="Stop recording"
+                  accessibilityRole="button"
+                >
+                  <BlurView intensity={40} style={styles.fullScreenStopBlur}>
+                    <IconSymbol
+                      ios_icon_name="stop.circle.fill"
+                      android_material_icon_name="stop-circle"
+                      size={64}
+                      color="#EF4444"
+                    />
+                    <Text style={styles.fullScreenStopText}>
+                      {isSaving ? 'Analyzing...' : 'Stop'}
+                    </Text>
+                  </BlurView>
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+
+            {/* Success Panel */}
+            {showSuccessPanel && (
+              <Animated.View style={[styles.successPanel, { opacity }]}>
+                <BlurView intensity={80} style={styles.successPanelBlur}>
+                  <View style={styles.successPanelContent}>
+                    <IconSymbol
+                      ios_icon_name="checkmark.circle.fill"
+                      android_material_icon_name="check-circle"
+                      size={64}
+                      color="#10B981"
+                    />
+                    <Text style={styles.successTitle}>CheckUp Complete</Text>
+                    <Text style={styles.successSubtitle}>View Report?</Text>
+                    
+                    <View style={styles.successButtons}>
+                      <TouchableOpacity
+                        style={styles.successButton}
+                        onPress={handleViewReport}
+                        accessibilityLabel="View report"
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.successButtonText}>View Report</Text>
+                      </TouchableOpacity>
+                      
+                      <TouchableOpacity
+                        style={styles.successButtonSecondary}
+                        onPress={handleReturnHome}
+                        accessibilityLabel="Return home"
+                        accessibilityRole="button"
+                      >
+                        <Text style={styles.successButtonSecondaryText}>Return Home</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </BlurView>
+              </Animated.View>
+            )}
+          </LinearGradient>
+        </View>
+      </Modal>
+    );
+  }
+
+  // Permission error card
+  if (permissionError) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#18181B', '#27272a', '#18181B']}
+          style={styles.gradient}
+        >
+          <View style={styles.topBar}>
+            <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleBack}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
+            >
+              <IconSymbol
+                ios_icon_name="chevron.left"
+                android_material_icon_name="arrow-back"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.errorContainer}>
+            <BlurView intensity={30} style={styles.errorCard}>
+              <View style={styles.errorContent}>
+                <IconSymbol
+                  ios_icon_name="mic.slash.fill"
+                  android_material_icon_name="mic-off"
+                  size={64}
+                  color="#EF4444"
+                />
+                <Text style={styles.errorTitle}>Microphone Access Required</Text>
+                <Text style={styles.errorMessage}>
+                  To record engine audio, please enable microphone access in your device settings.
+                </Text>
+                
+                <TouchableOpacity
+                  style={styles.errorButton}
+                  onPress={requestPermissions}
+                  accessibilityLabel="Request permission"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.errorButtonText}>Request Permission</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.errorBackButton}
+                  onPress={handleBack}
+                  accessibilityLabel="Go back"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.errorBackButtonText}>Go Back</Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // Normal desktop/web view
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -419,6 +763,51 @@ export default function HealthCheckUpScreen() {
             </View>
           </BlurView>
         </ScrollView>
+
+        {/* Success Panel for desktop */}
+        {showSuccessPanel && !IS_MOBILE && (
+          <Modal
+            visible={showSuccessPanel}
+            animationType="fade"
+            transparent={true}
+            onRequestClose={() => setShowSuccessPanel(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <BlurView intensity={80} style={styles.successPanelBlur}>
+                <View style={styles.successPanelContent}>
+                  <IconSymbol
+                    ios_icon_name="checkmark.circle.fill"
+                    android_material_icon_name="check-circle"
+                    size={64}
+                    color="#10B981"
+                  />
+                  <Text style={styles.successTitle}>CheckUp Complete</Text>
+                  <Text style={styles.successSubtitle}>View Report?</Text>
+                  
+                  <View style={styles.successButtons}>
+                    <TouchableOpacity
+                      style={styles.successButton}
+                      onPress={handleViewReport}
+                      accessibilityLabel="View report"
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.successButtonText}>View Report</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={styles.successButtonSecondary}
+                      onPress={handleReturnHome}
+                      accessibilityLabel="Return home"
+                      accessibilityRole="button"
+                    >
+                      <Text style={styles.successButtonSecondaryText}>Return Home</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </BlurView>
+            </View>
+          </Modal>
+        )}
       </LinearGradient>
     </View>
   );
@@ -710,5 +1099,252 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  // Full-screen mode styles
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  fullScreenGradient: {
+    flex: 1,
+  },
+  dimOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  fullScreenTopBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 48 : 60,
+    paddingBottom: 16,
+  },
+  fullScreenBackButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(252, 211, 77, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenTimer: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 2,
+  },
+  countdownContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  countdownText: {
+    fontSize: 120,
+    fontWeight: '800',
+    color: colors.primary,
+    textShadowColor: colors.primary,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 20,
+  },
+  fullScreenWaveformContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  fullScreenWaveform: {
+    width: '100%',
+    height: SCREEN_HEIGHT * 0.5,
+    backgroundColor: '#0a0a0a',
+    borderRadius: 24,
+    overflow: 'hidden',
+    position: 'relative',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+  },
+  fullScreenPausedText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.primary,
+    textAlign: 'center',
+    marginTop: 20,
+    letterSpacing: 4,
+  },
+  fullScreenControls: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingBottom: 60,
+    gap: 24,
+  },
+  fullScreenControlButton: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  fullScreenControlBlur: {
+    backgroundColor: 'rgba(39, 39, 42, 0.9)',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.5)',
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 140,
+  },
+  fullScreenStopBlur: {
+    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    borderWidth: 2,
+    borderColor: '#EF4444',
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+    minWidth: 140,
+  },
+  fullScreenControlText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  fullScreenStopText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#EF4444',
+  },
+  // Success panel styles
+  successPanel: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  successPanelBlur: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    margin: 20,
+    maxWidth: 400,
+  },
+  successPanelContent: {
+    backgroundColor: 'rgba(39, 39, 42, 0.95)',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.4)',
+    padding: 40,
+    alignItems: 'center',
+    gap: 16,
+  },
+  successTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  successSubtitle: {
+    fontSize: 18,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  successButtons: {
+    width: '100%',
+    gap: 12,
+    marginTop: 16,
+  },
+  successButton: {
+    backgroundColor: 'rgba(252, 211, 77, 0.3)',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.6)',
+    padding: 16,
+    alignItems: 'center',
+  },
+  successButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  successButtonSecondary: {
+    backgroundColor: 'rgba(39, 39, 42, 0.6)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    padding: 16,
+    alignItems: 'center',
+  },
+  successButtonSecondaryText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  // Error styles
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  errorCard: {
+    backgroundColor: 'rgba(39, 39, 42, 0.9)',
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    overflow: 'hidden',
+    maxWidth: 400,
+    width: '100%',
+  },
+  errorContent: {
+    padding: 40,
+    alignItems: 'center',
+    gap: 16,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  errorButton: {
+    backgroundColor: 'rgba(252, 211, 77, 0.3)',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.6)',
+    padding: 16,
+    width: '100%',
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  errorButtonText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  errorBackButton: {
+    padding: 12,
+  },
+  errorBackButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
   },
 });
