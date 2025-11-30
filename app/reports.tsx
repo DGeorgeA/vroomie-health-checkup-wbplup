@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -32,13 +32,12 @@ export default function ReportsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const modalAnim = useState(new Animated.Value(0))[0];
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadSettings();
-    loadSessions();
   }, []);
 
-  React.useFocusEffect(
-    React.useCallback(() => {
+  useFocusEffect(
+    useCallback(() => {
       loadSessions();
     }, [])
   );
@@ -251,86 +250,85 @@ export default function ReportsScreen() {
                 const severityLabel = getSeverityLabel(session.anomalyScore);
 
                 return (
-                  <React.Fragment key={index}>
-                    <TouchableOpacity
-                      onPress={() => handleSessionPress(session)}
-                      activeOpacity={0.8}
-                      accessibilityLabel={`View session details`}
-                      accessibilityRole="button"
-                    >
-                      <BlurView intensity={20} style={styles.reportCard}>
-                        <View style={styles.reportContent}>
-                          <View style={styles.reportHeader}>
-                            <View style={styles.reportHeaderLeft}>
-                              <IconSymbol
-                                ios_icon_name={session.anomalyScore >= 51 ? 'exclamationmark.triangle.fill' : 'checkmark.circle.fill'}
-                                android_material_icon_name={session.anomalyScore >= 51 ? 'warning' : 'check-circle'}
-                                size={32}
-                                color={severityColor}
-                              />
-                              <View style={styles.reportHeaderInfo}>
-                                <Text style={styles.reportDate}>
-                                  {new Date(session.timestamp).toLocaleDateString()}
-                                </Text>
-                                <Text style={styles.reportTime}>
-                                  {new Date(session.timestamp).toLocaleTimeString([], { 
-                                    hour: '2-digit', 
-                                    minute: '2-digit' 
-                                  })}
-                                </Text>
-                              </View>
+                  <TouchableOpacity
+                    key={index}
+                    onPress={() => handleSessionPress(session)}
+                    activeOpacity={0.8}
+                    accessibilityLabel={`View session details`}
+                    accessibilityRole="button"
+                  >
+                    <BlurView intensity={20} style={styles.reportCard}>
+                      <View style={styles.reportContent}>
+                        <View style={styles.reportHeader}>
+                          <View style={styles.reportHeaderLeft}>
+                            <IconSymbol
+                              ios_icon_name={session.anomalyScore >= 51 ? 'exclamationmark.triangle.fill' : 'checkmark.circle.fill'}
+                              android_material_icon_name={session.anomalyScore >= 51 ? 'warning' : 'check-circle'}
+                              size={32}
+                              color={severityColor}
+                            />
+                            <View style={styles.reportHeaderInfo}>
+                              <Text style={styles.reportDate}>
+                                {new Date(session.timestamp).toLocaleDateString()}
+                              </Text>
+                              <Text style={styles.reportTime}>
+                                {new Date(session.timestamp).toLocaleTimeString([], { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}
+                              </Text>
                             </View>
-                            <View
+                          </View>
+                          <View
+                            style={[
+                              styles.severityBadge,
+                              { backgroundColor: `${severityColor}20` },
+                            ]}
+                          >
+                            <Text
                               style={[
-                                styles.severityBadge,
-                                { backgroundColor: `${severityColor}20` },
+                                styles.severityText,
+                                { color: severityColor },
                               ]}
                             >
-                              <Text
-                                style={[
-                                  styles.severityText,
-                                  { color: severityColor },
-                                ]}
-                              >
-                                {severityLabel}
-                              </Text>
-                            </View>
+                              {severityLabel}
+                            </Text>
                           </View>
-
-                          <View style={styles.reportStats}>
-                            <View style={styles.reportStat}>
-                              <Text style={styles.reportStatLabel}>Score</Text>
-                              <Text style={[styles.reportStatValue, { color: severityColor }]}>
-                                {session.anomalyScore}/100
-                              </Text>
-                            </View>
-                            <View style={styles.reportStat}>
-                              <Text style={styles.reportStatLabel}>Duration</Text>
-                              <Text style={styles.reportStatValue}>{session.duration_seconds}s</Text>
-                            </View>
-                            <View style={styles.reportStat}>
-                              <Text style={styles.reportStatLabel}>Anomalies</Text>
-                              <Text style={styles.reportStatValue}>{session.anomalies.length}</Text>
-                            </View>
-                          </View>
-
-                          {session.detectedAnomalyName && (
-                            <View style={styles.detectedAnomalyContainer}>
-                              <IconSymbol
-                                ios_icon_name="exclamationmark.triangle.fill"
-                                android_material_icon_name="warning"
-                                size={16}
-                                color={colors.primary}
-                              />
-                              <Text style={styles.detectedAnomalyText}>
-                                Detected: {session.detectedAnomalyName}
-                              </Text>
-                            </View>
-                          )}
                         </View>
-                      </BlurView>
-                    </TouchableOpacity>
-                  </React.Fragment>
+
+                        <View style={styles.reportStats}>
+                          <View style={styles.reportStat}>
+                            <Text style={styles.reportStatLabel}>Score</Text>
+                            <Text style={[styles.reportStatValue, { color: severityColor }]}>
+                              {session.anomalyScore}/100
+                            </Text>
+                          </View>
+                          <View style={styles.reportStat}>
+                            <Text style={styles.reportStatLabel}>Duration</Text>
+                            <Text style={styles.reportStatValue}>{session.duration_seconds}s</Text>
+                          </View>
+                          <View style={styles.reportStat}>
+                            <Text style={styles.reportStatLabel}>Anomalies</Text>
+                            <Text style={styles.reportStatValue}>{session.anomalies.length}</Text>
+                          </View>
+                        </View>
+
+                        {session.detectedAnomalyName && (
+                          <View style={styles.detectedAnomalyContainer}>
+                            <IconSymbol
+                              ios_icon_name="exclamationmark.triangle.fill"
+                              android_material_icon_name="warning"
+                              size={16}
+                              color={colors.primary}
+                            />
+                            <Text style={styles.detectedAnomalyText}>
+                              Detected: {session.detectedAnomalyName}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </BlurView>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -430,7 +428,7 @@ export default function ReportsScreen() {
                             color="#10B981"
                           />
                           <Text style={styles.modalHealthyText}>
-                            No issues identified — Go Vroomie!!
+                            No issues identified — Go VROOMIIEE!!
                           </Text>
                         </View>
                       )}

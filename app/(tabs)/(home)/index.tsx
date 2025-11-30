@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import VroomieLogo from '@/components/VroomieLogo';
+import VroomieText from '@/components/VroomieText';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,7 +19,7 @@ export default function DashboardScreen() {
   const [highContrast, setHighContrast] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
 
-  React.useEffect(() => {
+  useEffect(() => {
     loadSettings();
     loadSessions();
   }, []);
@@ -98,7 +99,7 @@ export default function DashboardScreen() {
         >
           <View style={styles.heroArea}>
             <View style={styles.shimmeringBackground} />
-            <VroomieLogo size={160} disableRotation={logoRotationDisabled} />
+            <VroomieText size={80} />
           </View>
 
           <View style={styles.ctaContainer}>
@@ -224,15 +225,15 @@ export default function DashboardScreen() {
 
               <View style={styles.settingRow}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Disable Logo Rotation</Text>
+                  <Text style={styles.settingLabel}>Disable Mascot Rotation</Text>
                   <Text style={styles.settingDescription}>
-                    Turn off logo rotation for accessibility
+                    Turn off mascot rotation for accessibility
                   </Text>
                 </View>
                 <TouchableOpacity
                   style={[styles.toggle, logoRotationDisabled && styles.toggleActive]}
                   onPress={toggleLogoRotation}
-                  accessibilityLabel={`Logo rotation ${logoRotationDisabled ? 'disabled' : 'enabled'}`}
+                  accessibilityLabel={`Mascot rotation ${logoRotationDisabled ? 'disabled' : 'enabled'}`}
                   accessibilityRole="switch"
                 >
                   <View style={[styles.toggleThumb, logoRotationDisabled && styles.toggleThumbActive]} />
