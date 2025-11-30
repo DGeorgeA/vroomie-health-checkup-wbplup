@@ -6,8 +6,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import VroomieLogo from '@/components/VroomieLogo';
 import GlassCard from '@/components/GlassCard';
 import TopNavigation from '@/components/TopNavigation';
+import { Footer } from '@/components/Footer';
 import { colors } from '@/styles/commonStyles';
-import { mockVehicles, mockAnalyses, mockReports } from '@/data/mockData';
+import { mockVehicles, mockAnalyses } from '@/data/mockData';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -74,6 +75,8 @@ export default function DashboardScreen() {
             />
           </View>
         </ScrollView>
+
+        <Footer />
       </LinearGradient>
     </View>
   );

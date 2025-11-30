@@ -11,6 +11,7 @@ import { useNetworkState } from "expo-network";
 import { DarkTheme, Theme, ThemeProvider } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { WidgetProvider } from "@/contexts/WidgetContext";
+import { ToastContainer } from "@/components/ToastContainer";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -64,7 +65,7 @@ export default function RootLayout() {
       <StatusBar style="light" animated />
       <ThemeProvider value={VroomieTheme}>
         <WidgetProvider>
-          <GestureHandlerRootView>
+          <GestureHandlerRootView style={{ flex: 1 }}>
             <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="health-checkup" options={{ headerShown: false }} />
@@ -73,6 +74,7 @@ export default function RootLayout() {
               <Stack.Screen name="+not-found" options={{ headerShown: false }} />
             </Stack>
             <SystemBars style="light" />
+            <ToastContainer />
           </GestureHandlerRootView>
         </WidgetProvider>
       </ThemeProvider>

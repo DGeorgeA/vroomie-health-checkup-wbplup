@@ -1,24 +1,47 @@
 
-import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, Dimensions } from 'react-native';
+import React, { useRef, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Dimensions, TextInput, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from '@/components/IconSymbol';
 import TopNavigation from '@/components/TopNavigation';
+import { Footer } from '@/components/Footer';
+import { toast } from '@/components/Toast';
 import { colors } from '@/styles/commonStyles';
 import { mockAnalyses, mockVehicles, mockReports } from '@/data/mockData';
-import { Anomaly } from '@/types/entities';
+import { Anomaly, MechanicReport } from '@/types/entities';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const RECOMMENDED_ACTIONS_OPTIONS = [
+  'Inspect engine mounts',
+  'Replace spark plugs',
+  'Check belt tension',
+  'Inspect timing chain',
+  'Check engine oil level',
+  'Replace air filter',
+  'Inspect exhaust system',
+  'Check coolant level',
+  'Inspect brake system',
+  'Replace fuel filter',
+  'Check transmission fluid',
+  'Inspect suspension components',
+];
 
 export default function AnalysisDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   
-  const analysis = mockAnalyses.find(a => a.id === id);
+  const [analysis, setAnalysis] = useState(mockAnalyses.find(a => a.id === id));
   const vehicle = analysis ? mockVehicles.find(v => v.id === analysis.vehicle_id) : null;
-  const reports = analysis ? mockReports.filter(r => r.analysis_id === analysis.id) : [];
+  const [reports, setReports] = useState(mockReports.filter(r => r.analysis_id === id));
+  
+  const [modalVisible, setModalVisible] = useState(false);
+  const [issueSummary, setIssueSummary] = useState('');
+  const [estimatedCost, setEstimatedCost] = useState('');
+  const [selectedActions, setSelectedActions] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   if (!analysis || !vehicle) {
     return (
@@ -29,7 +52,20 @@ export default function AnalysisDetailScreen() {
         >
           <TopNavigation />
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>Analysis not found</Text>
+            <IconSymbol
+              ios_icon_name="exclamationmark.triangle"
+              android_material_icon_name="error"
+              size={64}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.errorTitle}>Analysis not found</Text>
+            <Text style={styles.errorText}>The requested analysis could not be found</Text>
+            <TouchableOpacity
+              style={styles.errorButton}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.errorButtonText}>Go Back</Text>
+            </TouchableOpacity>
           </View>
         </LinearGradient>
       </View>
@@ -37,14 +73,14 @@ export default function AnalysisDetailScreen() {
   }
 
   const getStatusInfo = () => {
-    if (analysis.anomaly_score >= 80) {
-      return { label: 'Critical', color: '#DC2626', bgColor: 'rgba(220, 38, 38, 0.2)' };
-    } else if (analysis.anomaly_score >= 60) {
-      return { label: 'Warning', color: '#F97316', bgColor: 'rgba(249, 115, 22, 0.2)' };
-    } else if (analysis.anomaly_score >= 30) {
-      return { label: 'Caution', color: '#FBBF24', bgColor: 'rgba(251, 191, 36, 0.2)' };
+    if (analysis.anomaly_score >= 81) {
+      return { label: 'Critical', color: '#C026D3', bgColor: 'rgba(192, 38, 211, 0.2)' };
+    } else if (analysis.anomaly_score >= 51) {
+      return { label: 'High', color: '#DC2626', bgColor: 'rgba(220, 38, 38, 0.2)' };
+    } else if (analysis.anomaly_score >= 21) {
+      return { label: 'Medium', color: '#F97316', bgColor: 'rgba(249, 115, 22, 0.2)' };
     } else {
-      return { label: 'Healthy', color: '#10B981', bgColor: 'rgba(16, 185, 129, 0.2)' };
+      return { label: 'Low', color: '#FBBF24', bgColor: 'rgba(251, 191, 36, 0.2)' };
     }
   };
 
@@ -58,24 +94,71 @@ export default function AnalysisDetailScreen() {
     }
   };
 
-  const statusInfo = getStatusInfo();
+  const generateSeverity = (anomalyScore: number): 'low' | 'medium' | 'high' | 'critical' => {
+    if (anomalyScore <= 20) return 'low';
+    if (anomalyScore <= 50) return 'medium';
+    if (anomalyScore <= 80) return 'high';
+    return 'critical';
+  };
 
-  const generateMechanicReport = () => {
-    Alert.alert(
-      'Generate Mechanic Report',
-      'This will create a detailed mechanic report based on the analysis.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Generate', 
-          onPress: () => {
-            Alert.alert('Success', 'Mechanic report generated successfully!');
-            router.push('/reports');
-          }
-        },
-      ]
+  const handleGenerateReport = () => {
+    setIssueSummary('');
+    setEstimatedCost('');
+    setSelectedActions([]);
+    setModalVisible(true);
+  };
+
+  const toggleAction = (action: string) => {
+    setSelectedActions(prev => 
+      prev.includes(action) 
+        ? prev.filter(a => a !== action)
+        : [...prev, action]
     );
   };
+
+  const handleSaveReport = () => {
+    if (!issueSummary.trim()) {
+      toast.error('Please enter an issue summary');
+      return;
+    }
+    if (!estimatedCost || parseFloat(estimatedCost) <= 0) {
+      toast.error('Please enter a valid estimated cost');
+      return;
+    }
+    if (selectedActions.length === 0) {
+      toast.error('Please select at least one recommended action');
+      return;
+    }
+
+    setIsSaving(true);
+
+    setTimeout(() => {
+      const severity = generateSeverity(analysis.anomaly_score);
+      const newReport: MechanicReport = {
+        id: `report-${Date.now()}`,
+        analysis_id: analysis.id,
+        severity,
+        estimated_cost: parseFloat(estimatedCost),
+        issue_summary: issueSummary,
+        recommended_actions: selectedActions,
+        created_at: new Date().toISOString(),
+      };
+
+      mockReports.push(newReport);
+      setReports(prev => [...prev, newReport]);
+      
+      setIsSaving(false);
+      setModalVisible(false);
+      
+      toast.success('Mechanic report generated successfully!');
+      
+      setTimeout(() => {
+        router.push('/reports');
+      }, 1000);
+    }, 1500);
+  };
+
+  const statusInfo = getStatusInfo();
 
   return (
     <View style={styles.container}>
@@ -93,6 +176,8 @@ export default function AnalysisDetailScreen() {
           <TouchableOpacity
             style={styles.backButton}
             onPress={() => router.back()}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
           >
             <IconSymbol
               ios_icon_name="chevron.left"
@@ -109,9 +194,7 @@ export default function AnalysisDetailScreen() {
             {new Date(analysis.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
 
-          {/* Two Column Layout */}
           <View style={styles.columnsContainer}>
-            {/* Left Column - Summary */}
             <View style={styles.leftColumn}>
               <BlurView intensity={20} style={styles.summaryCard}>
                 <View style={styles.summaryContent}>
@@ -157,7 +240,9 @@ export default function AnalysisDetailScreen() {
 
                   <TouchableOpacity
                     style={styles.generateButton}
-                    onPress={generateMechanicReport}
+                    onPress={handleGenerateReport}
+                    accessibilityLabel="Generate mechanic report"
+                    accessibilityRole="button"
                   >
                     <BlurView intensity={30} style={styles.generateButtonBlur}>
                       <View style={styles.generateButtonContent}>
@@ -174,16 +259,17 @@ export default function AnalysisDetailScreen() {
                 </View>
               </BlurView>
 
-              {/* Mini Waveform */}
               <BlurView intensity={20} style={styles.waveformCard}>
                 <View style={styles.waveformCardContent}>
                   <Text style={styles.waveformCardTitle}>Waveform Analysis</Text>
                   <MiniWaveform anomalies={analysis.anomalies} duration={analysis.duration_seconds} />
+                  <Text style={styles.waveformDescription} accessibilityLabel={`Waveform showing ${analysis.anomalies.length} anomalies detected`}>
+                    {analysis.anomalies.length} anomaly markers displayed on timeline
+                  </Text>
                 </View>
               </BlurView>
             </View>
 
-            {/* Right Column - Anomalies */}
             <View style={styles.rightColumn}>
               <BlurView intensity={20} style={styles.anomaliesCard}>
                 <View style={styles.anomaliesContent}>
@@ -208,69 +294,69 @@ export default function AnalysisDetailScreen() {
                   ) : (
                     <ScrollView style={styles.anomaliesList} showsVerticalScrollIndicator={false}>
                       {analysis.anomalies.map((anomaly, index) => (
-                        <React.Fragment key={index}>
-                          <View
-                            style={[
-                              styles.anomalyItem,
-                              { borderColor: getSeverityColor(anomaly.severity) },
-                            ]}
-                          >
-                            <View style={styles.anomalyHeader}>
-                              <View
+                        <View
+                          key={index}
+                          style={[
+                            styles.anomalyItem,
+                            { 
+                              borderColor: getSeverityColor(anomaly.severity),
+                              shadowColor: getSeverityColor(anomaly.severity),
+                            },
+                          ]}
+                          accessibilityLabel={`Anomaly ${index + 1}: ${anomaly.severity} severity at ${(anomaly.timestamp_ms / 1000).toFixed(1)} seconds, frequency ${anomaly.frequency_range}`}
+                        >
+                          <View style={styles.anomalyHeader}>
+                            <View
+                              style={[
+                                styles.severityBadge,
+                                { backgroundColor: `${getSeverityColor(anomaly.severity)}20` },
+                              ]}
+                            >
+                              <Text
                                 style={[
-                                  styles.severityBadge,
-                                  { backgroundColor: `${getSeverityColor(anomaly.severity)}20` },
+                                  styles.severityText,
+                                  { color: getSeverityColor(anomaly.severity) },
                                 ]}
                               >
-                                <Text
-                                  style={[
-                                    styles.severityText,
-                                    { color: getSeverityColor(anomaly.severity) },
-                                  ]}
-                                >
-                                  {anomaly.severity.toUpperCase()}
-                                </Text>
-                              </View>
-                              <Text style={styles.anomalyTime}>
-                                {(anomaly.timestamp_ms / 1000).toFixed(1)}s
+                                {anomaly.severity.toUpperCase()}
                               </Text>
                             </View>
-                            <Text style={styles.anomalyFrequency}>{anomaly.frequency_range}</Text>
+                            <Text style={styles.anomalyTime}>
+                              {(anomaly.timestamp_ms / 1000).toFixed(1)}s
+                            </Text>
                           </View>
-                        </React.Fragment>
+                          <Text style={styles.anomalyFrequency}>{anomaly.frequency_range}</Text>
+                        </View>
                       ))}
                     </ScrollView>
                   )}
                 </View>
               </BlurView>
 
-              {/* Existing Reports */}
               {reports.length > 0 && (
                 <BlurView intensity={20} style={styles.reportsCard}>
                   <View style={styles.reportsContent}>
                     <Text style={styles.reportsTitle}>Mechanic Reports</Text>
                     {reports.map((report, index) => (
-                      <React.Fragment key={index}>
-                        <View style={styles.reportItem}>
-                          <View style={styles.reportHeader}>
-                            <IconSymbol
-                              ios_icon_name="wrench.fill"
-                              android_material_icon_name="build"
-                              size={20}
-                              color={colors.primary}
-                            />
-                            <Text style={styles.reportDate}>
-                              {new Date(report.created_at).toLocaleDateString()}
-                            </Text>
-                          </View>
-                          <Text style={styles.reportSummary} numberOfLines={2}>
-                            {report.issue_summary}
-                          </Text>
-                          <Text style={styles.reportCost}>
-                            Est. Cost: ${report.estimated_cost}
+                      <View key={index} style={styles.reportItem}>
+                        <View style={styles.reportHeader}>
+                          <IconSymbol
+                            ios_icon_name="wrench.fill"
+                            android_material_icon_name="build"
+                            size={20}
+                            color={colors.primary}
+                          />
+                          <Text style={styles.reportDate}>
+                            {new Date(report.created_at).toLocaleDateString()}
                           </Text>
                         </View>
-                      </React.Fragment>
+                        <Text style={styles.reportSummary} numberOfLines={2}>
+                          {report.issue_summary}
+                        </Text>
+                        <Text style={styles.reportCost}>
+                          Est. Cost: ${report.estimated_cost}
+                        </Text>
+                      </View>
                     ))}
                   </View>
                 </BlurView>
@@ -278,12 +364,134 @@ export default function AnalysisDetailScreen() {
             </View>
           </View>
         </ScrollView>
+
+        <Footer />
       </LinearGradient>
+
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={80} style={styles.modalBlur}>
+            <View style={styles.modalContainer}>
+              <ScrollView 
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalContent}
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Generate Mechanic Report</Text>
+                  <TouchableOpacity
+                    onPress={() => setModalVisible(false)}
+                    style={styles.modalClose}
+                    accessibilityLabel="Close modal"
+                    accessibilityRole="button"
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark.circle.fill"
+                      android_material_icon_name="cancel"
+                      size={28}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Issue Summary *</Text>
+                  <TextInput
+                    style={styles.textArea}
+                    value={issueSummary}
+                    onChangeText={setIssueSummary}
+                    placeholder="Describe the issues found..."
+                    placeholderTextColor={colors.textSecondary}
+                    multiline
+                    numberOfLines={4}
+                    accessibilityLabel="Issue summary input"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Estimated Cost ($) *</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={estimatedCost}
+                    onChangeText={setEstimatedCost}
+                    placeholder="0.00"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="decimal-pad"
+                    accessibilityLabel="Estimated cost input"
+                  />
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Recommended Actions *</Text>
+                  <Text style={styles.formHint}>Select all that apply</Text>
+                  <View style={styles.actionsGrid}>
+                    {RECOMMENDED_ACTIONS_OPTIONS.map((action, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={[
+                          styles.actionChip,
+                          selectedActions.includes(action) && styles.actionChipSelected,
+                        ]}
+                        onPress={() => toggleAction(action)}
+                        accessibilityLabel={`${action}, ${selectedActions.includes(action) ? 'selected' : 'not selected'}`}
+                        accessibilityRole="checkbox"
+                      >
+                        <Text
+                          style={[
+                            styles.actionChipText,
+                            selectedActions.includes(action) && styles.actionChipTextSelected,
+                          ]}
+                        >
+                          {action}
+                        </Text>
+                        {selectedActions.includes(action) && (
+                          <IconSymbol
+                            ios_icon_name="checkmark.circle.fill"
+                            android_material_icon_name="check-circle"
+                            size={16}
+                            color={colors.primary}
+                          />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.cancelButton}
+                    onPress={() => setModalVisible(false)}
+                    accessibilityLabel="Cancel"
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+                    onPress={handleSaveReport}
+                    disabled={isSaving}
+                    accessibilityLabel={isSaving ? 'Saving report' : 'Save report'}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.saveButtonText}>
+                      {isSaving ? 'Saving...' : 'Save Report'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
+          </BlurView>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-// Mini waveform component with anomaly markers
 const MiniWaveform = ({ anomalies, duration }: { anomalies: Anomaly[]; duration: number }) => {
   return (
     <View style={styles.miniWaveform}>
@@ -302,26 +510,36 @@ const MiniWaveform = ({ anomalies, duration }: { anomalies: Anomaly[]; duration:
         })}
       </View>
       
-      {/* Anomaly markers */}
       {anomalies.map((anomaly, index) => {
         const position = (anomaly.timestamp_ms / (duration * 1000)) * 100;
-        const color = 
-          anomaly.severity === 'critical' ? '#C026D3' :
-          anomaly.severity === 'high' ? '#DC2626' :
-          anomaly.severity === 'medium' ? '#F97316' : '#FBBF24';
+        const color = getSeverityColor(anomaly.severity);
         
         return (
           <View
             key={index}
             style={[
               styles.anomalyMarker,
-              { left: `${position}%`, backgroundColor: color },
+              { 
+                left: `${position}%`, 
+                backgroundColor: color,
+                shadowColor: color,
+              },
             ]}
           />
         );
       })}
     </View>
   );
+};
+
+const getSeverityColor = (severity: string) => {
+  switch (severity) {
+    case 'low': return '#FBBF24';
+    case 'medium': return '#F97316';
+    case 'high': return '#DC2626';
+    case 'critical': return '#C026D3';
+    default: return '#71717a';
+  }
 };
 
 const styles = StyleSheet.create({
@@ -339,7 +557,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 100 : 20,
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
   backButton: {
     flexDirection: 'row',
@@ -449,7 +667,7 @@ const styles = StyleSheet.create({
   },
   generateButtonBlur: {
     backgroundColor: 'rgba(39, 39, 42, 0.6)',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: 'rgba(252, 211, 77, 0.5)',
   },
   generateButtonContent: {
@@ -505,10 +723,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     width: 3,
     borderRadius: 2,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
-    shadowRadius: 4,
+    shadowRadius: 6,
+  },
+  waveformDescription: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 12,
+    textAlign: 'center',
   },
   anomaliesCard: {
     backgroundColor: 'rgba(39, 39, 42, 0.6)',
@@ -572,10 +795,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
   },
   anomalyHeader: {
     flexDirection: 'row',
@@ -652,9 +874,170 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 40,
+  },
+  errorTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
   },
   errorText: {
-    fontSize: 18,
+    fontSize: 16,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  errorButton: {
+    backgroundColor: 'rgba(252, 211, 77, 0.2)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.5)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  errorButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalBlur: {
+    width: Platform.OS === 'web' ? '90%' : '100%',
+    maxWidth: 600,
+    maxHeight: '90%',
+    borderRadius: 24,
+    overflow: 'hidden',
+    margin: 20,
+  },
+  modalContainer: {
+    backgroundColor: 'rgba(39, 39, 42, 0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    flex: 1,
+  },
+  modalScroll: {
+    flex: 1,
+  },
+  modalContent: {
+    padding: 24,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  modalClose: {
+    padding: 4,
+  },
+  formGroup: {
+    marginBottom: 24,
+  },
+  formLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+  },
+  formHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 12,
+  },
+  input: {
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    padding: 16,
+    fontSize: 16,
+    color: colors.text,
+  },
+  textArea: {
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    padding: 16,
+    fontSize: 16,
+    color: colors.text,
+    minHeight: 120,
+    textAlignVertical: 'top',
+  },
+  actionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  actionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  actionChipSelected: {
+    backgroundColor: 'rgba(252, 211, 77, 0.3)',
+    borderColor: 'rgba(252, 211, 77, 0.6)',
+  },
+  actionChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  actionChipTextSelected: {
+    color: colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    padding: 16,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  saveButton: {
+    flex: 1,
+    backgroundColor: 'rgba(252, 211, 77, 0.3)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.6)',
+    padding: 16,
+    alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: colors.text,
   },
 });

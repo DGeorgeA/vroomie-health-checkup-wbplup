@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from '@/components/IconSymbol';
 import TopNavigation from '@/components/TopNavigation';
+import { Footer } from '@/components/Footer';
 import { colors } from '@/styles/commonStyles';
 import { mockVehicles } from '@/data/mockData';
 
@@ -41,10 +42,29 @@ export default function VehiclesScreen() {
           <Text style={styles.title}>Your Vehicles</Text>
           <Text style={styles.subtitle}>Manage your vehicle fleet</Text>
 
-          <View style={styles.vehiclesList}>
-            {mockVehicles.map((vehicle, index) => (
-              <React.Fragment key={index}>
+          {mockVehicles.length === 0 ? (
+            <BlurView intensity={20} style={styles.emptyCard}>
+              <View style={styles.emptyContent}>
+                <IconSymbol
+                  ios_icon_name="car"
+                  android_material_icon_name="directions-car"
+                  size={64}
+                  color={colors.textSecondary}
+                />
+                <Text style={styles.emptyTitle}>Add your first vehicle</Text>
+                <Text style={styles.emptyText}>
+                  Start by adding a vehicle to track its health and maintenance
+                </Text>
+                <TouchableOpacity style={styles.addButton}>
+                  <Text style={styles.addButtonText}>Add Vehicle</Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          ) : (
+            <View style={styles.vehiclesList}>
+              {mockVehicles.map((vehicle, index) => (
                 <TouchableOpacity
+                  key={index}
                   onPress={() => router.push(`/vehicles/${vehicle.id}` as any)}
                 >
                   <BlurView intensity={20} style={styles.vehicleCard}>
@@ -74,24 +94,12 @@ export default function VehiclesScreen() {
                     </View>
                   </BlurView>
                 </TouchableOpacity>
-              </React.Fragment>
-            ))}
-          </View>
-
-          <TouchableOpacity style={styles.addButton}>
-            <BlurView intensity={20} style={styles.addButtonBlur}>
-              <View style={styles.addButtonContent}>
-                <IconSymbol
-                  ios_icon_name="plus.circle.fill"
-                  android_material_icon_name="add-circle"
-                  size={24}
-                  color={colors.primary}
-                />
-                <Text style={styles.addButtonText}>Add New Vehicle</Text>
-              </View>
-            </BlurView>
-          </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </ScrollView>
+
+        <Footer />
       </LinearGradient>
     </View>
   );
@@ -112,7 +120,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 100 : 20,
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   backButton: {
     flexDirection: 'row',
@@ -136,9 +144,45 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 32,
   },
+  emptyCard: {
+    backgroundColor: 'rgba(39, 39, 42, 0.6)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    overflow: 'hidden',
+    padding: 40,
+  },
+  emptyContent: {
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  addButton: {
+    backgroundColor: 'rgba(252, 211, 77, 0.3)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.5)',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+  },
+  addButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
   vehiclesList: {
     gap: 12,
-    marginBottom: 24,
   },
   vehicleCard: {
     backgroundColor: 'rgba(39, 39, 42, 0.6)',
@@ -150,7 +194,7 @@ const styles = StyleSheet.create({
   vehicleContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 20,
     gap: 16,
   },
   vehicleIcon: {
@@ -175,26 +219,5 @@ const styles = StyleSheet.create({
   vehicleDetails: {
     fontSize: 14,
     color: colors.textSecondary,
-  },
-  addButton: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  addButtonBlur: {
-    backgroundColor: 'rgba(39, 39, 42, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(252, 211, 77, 0.3)',
-  },
-  addButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.primary,
   },
 });
