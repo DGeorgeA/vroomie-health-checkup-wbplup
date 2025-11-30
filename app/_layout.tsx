@@ -26,7 +26,6 @@ export default function RootLayout() {
 
   const handleGlobalTap = () => {
     if (!logoRotationDisabled) {
-      // Trigger a subtle pulse animation to indicate the tap was registered
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1.02,
@@ -57,6 +56,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="health-checkup" />
           <Stack.Screen name="reports" />
+          <Stack.Screen name="admin" />
           <Stack.Screen name="+not-found" />
         </Stack>
       </Animated.View>

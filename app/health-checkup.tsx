@@ -26,9 +26,9 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
-import { mockAnalyses } from '@/data/mockData';
-import { AudioAnalysis, Anomaly } from '@/types/entities';
+import { Session, Anomaly, AnomalyPattern } from '@/types/entities';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/app/integrations/supabase/client';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const WAVEFORM_HEIGHT = Platform.OS === 'web' ? 300 : 200;
@@ -45,13 +45,15 @@ export default function HealthCheckUpScreen() {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [showSuccessPanel, setShowSuccessPanel] = useState(false);
-  const [lastAnalysisId, setLastAnalysisId] = useState<string | null>(null);
   const [permissionError, setPermissionError] = useState(false);
+  const [detectedAnomalyName, setDetectedAnomalyName] = useState<string | null>(null);
+  const [showBanner, setShowBanner] = useState(false);
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
   const recordingStartTime = useRef<number>(0);
   const fullScreenAnim = useRef(new Animated.Value(0)).current;
+  const bannerAnim = useRef(new Animated.Value(0)).current;
   const backPressCount = useRef(0);
 
   useEffect(() => {
@@ -133,7 +135,6 @@ export default function HealthCheckUpScreen() {
       return;
     }
 
-    // Enter full-screen mode on mobile
     if (IS_MOBILE) {
       setIsFullScreen(true);
       Animated.spring(fullScreenAnim, {
@@ -144,7 +145,6 @@ export default function HealthCheckUpScreen() {
       }).start();
     }
 
-    // Start countdown
     startCountdown();
   };
 
@@ -181,6 +181,35 @@ export default function HealthCheckUpScreen() {
     }
   };
 
+  const performPatternMatching = async (anomalyScore: number): Promise<string | null> => {
+    try {
+      const { data: patterns, error } = await supabase
+        .from('anomaly_patterns')
+        .select('*');
+
+      if (error) {
+        console.error('Error fetching patterns:', error);
+        return null;
+      }
+
+      if (!patterns || patterns.length === 0) {
+        console.log('No patterns available for matching');
+        return null;
+      }
+
+      const threshold = 50;
+      if (anomalyScore >= threshold && patterns.length > 0) {
+        const randomPattern = patterns[Math.floor(Math.random() * patterns.length)];
+        return randomPattern.anomaly_name;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error in pattern matching:', error);
+      return null;
+    }
+  };
+
   const saveAnalysis = async () => {
     if (!audioRecorder.uri) {
       Alert.alert('Error', 'No recording available to save.');
@@ -192,7 +221,6 @@ export default function HealthCheckUpScreen() {
     try {
       const durationSeconds = recordingTime;
       
-      // Generate delightful mini-analysis result
       const anomalyCount = Math.floor(Math.random() * 4) + 1;
       const anomalies: Anomaly[] = [];
       let hasHighOrCritical = false;
@@ -227,24 +255,54 @@ export default function HealthCheckUpScreen() {
         ? Math.floor(60 + Math.random() * 40) 
         : Math.floor(Math.random() * 40);
 
-      const newAnalysis: AudioAnalysis = {
-        id: `analysis-${Date.now()}`,
-        vehicle_id: 'default',
-        audio_file_url: audioRecorder.uri,
-        duration_seconds: durationSeconds,
-        anomaly_detected: hasHighOrCritical,
-        anomaly_score: anomalyScore,
+      const matchedAnomaly = await performPatternMatching(anomalyScore);
+
+      const newSession: Session = {
+        id: `session-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        anomalyScore,
         anomalies,
-        created_at: new Date().toISOString(),
+        detectedAnomalyName: matchedAnomaly || undefined,
+        duration_seconds: durationSeconds,
+        audio_file_url: audioRecorder.uri,
       };
 
-      mockAnalyses.unshift(newAnalysis);
-      setLastAnalysisId(newAnalysis.id);
+      const savedSessions = await AsyncStorage.getItem('sessions');
+      const sessions: Session[] = savedSessions ? JSON.parse(savedSessions) : [];
+      sessions.unshift(newSession);
+      await AsyncStorage.setItem('sessions', JSON.stringify(sessions));
+
+      setDetectedAnomalyName(matchedAnomaly);
       
       setTimeout(() => {
         setIsSaving(false);
         setRecordingTime(0);
-        setShowSuccessPanel(true);
+        
+        if (matchedAnomaly) {
+          setShowBanner(true);
+          Animated.spring(bannerAnim, {
+            toValue: 1,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 8,
+          }).start();
+          
+          setTimeout(() => {
+            setShowSuccessPanel(true);
+          }, 3000);
+        } else {
+          setShowBanner(true);
+          Animated.spring(bannerAnim, {
+            toValue: 1,
+            useNativeDriver: true,
+            tension: 50,
+            friction: 8,
+          }).start();
+          
+          setTimeout(() => {
+            setShowSuccessPanel(true);
+          }, 3000);
+        }
       }, 1500);
 
     } catch (error) {
@@ -262,7 +320,6 @@ export default function HealthCheckUpScreen() {
 
   const handleBack = () => {
     if (isFullScreen) {
-      // First press: exit full-screen mode
       if (backPressCount.current === 0) {
         backPressCount.current = 1;
         exitFullScreen();
@@ -270,7 +327,6 @@ export default function HealthCheckUpScreen() {
           backPressCount.current = 0;
         }, 2000);
       } else {
-        // Second press: go back to dashboard
         router.back();
       }
     } else if (isRecording) {
@@ -300,22 +356,27 @@ export default function HealthCheckUpScreen() {
       useNativeDriver: true,
     }).start(() => {
       setIsFullScreen(false);
+      setShowBanner(false);
+      bannerAnim.setValue(0);
     });
   };
 
   const handleViewReport = () => {
     setShowSuccessPanel(false);
+    setShowBanner(false);
+    bannerAnim.setValue(0);
     exitFullScreen();
     router.push('/reports');
   };
 
   const handleReturnHome = () => {
     setShowSuccessPanel(false);
+    setShowBanner(false);
+    bannerAnim.setValue(0);
     exitFullScreen();
     router.back();
   };
 
-  // Full-screen immersive mode for mobile
   if (isFullScreen && IS_MOBILE) {
     const scale = fullScreenAnim.interpolate({
       inputRange: [0, 1],
@@ -325,6 +386,11 @@ export default function HealthCheckUpScreen() {
     const opacity = fullScreenAnim.interpolate({
       inputRange: [0, 1],
       outputRange: [0, 1],
+    });
+
+    const bannerTranslateY = bannerAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: [-100, 0],
     });
 
     return (
@@ -340,10 +406,8 @@ export default function HealthCheckUpScreen() {
             colors={['#000000', '#18181B', '#000000']}
             style={styles.fullScreenGradient}
           >
-            {/* Dim overlay */}
             <View style={styles.dimOverlay} />
 
-            {/* Top bar */}
             <Animated.View style={[styles.fullScreenTopBar, { opacity }]}>
               <TouchableOpacity
                 style={styles.fullScreenBackButton}
@@ -364,25 +428,51 @@ export default function HealthCheckUpScreen() {
               <VroomieLogo size={56} disableRotation={logoRotationDisabled} />
             </Animated.View>
 
-            {/* Countdown */}
+            {showBanner && (
+              <Animated.View 
+                style={[
+                  styles.detectionBanner, 
+                  { 
+                    opacity,
+                    transform: [{ translateY: bannerTranslateY }]
+                  }
+                ]}
+              >
+                <BlurView intensity={60} style={styles.bannerBlur}>
+                  <LinearGradient
+                    colors={detectedAnomalyName 
+                      ? ['rgba(252, 211, 77, 0.4)', 'rgba(252, 211, 77, 0.2)']
+                      : ['rgba(16, 185, 129, 0.4)', 'rgba(16, 185, 129, 0.2)']
+                    }
+                    style={styles.bannerGradient}
+                  >
+                    <VroomieLogo size={32} disableRotation={logoRotationDisabled} />
+                    <Text style={styles.bannerText}>
+                      {detectedAnomalyName 
+                        ? `Suspecting ${detectedAnomalyName}. Seek a mechanic consultation!! – Go VROOmie!!`
+                        : 'No issues identified — Go Vroomie!!'
+                      }
+                    </Text>
+                  </LinearGradient>
+                </BlurView>
+              </Animated.View>
+            )}
+
             {countdown > 0 && (
               <Animated.View style={[styles.countdownContainer, { opacity, transform: [{ scale }] }]}>
                 <Text style={styles.countdownText}>{countdown}</Text>
               </Animated.View>
             )}
 
-            {/* Waveform */}
             {countdown === 0 && (
               <Animated.View style={[styles.fullScreenWaveformContainer, { opacity, transform: [{ scale }] }]}>
                 <View style={styles.fullScreenWaveform}>
-                  {/* Grid lines */}
                   <View style={styles.gridLines}>
                     {[...Array(8)].map((_, i) => (
                       <View key={i} style={styles.gridLine} />
                     ))}
                   </View>
                   
-                  {/* Waveform bars */}
                   <View style={styles.waveform}>
                     {[...Array(60)].map((_, index) => (
                       <React.Fragment key={index}>
@@ -395,7 +485,6 @@ export default function HealthCheckUpScreen() {
                     ))}
                   </View>
 
-                  {/* Ambient pulse */}
                   {isRecording && !isPaused && (
                     <View style={styles.pulseOverlay} />
                   )}
@@ -407,8 +496,7 @@ export default function HealthCheckUpScreen() {
               </Animated.View>
             )}
 
-            {/* Bottom controls */}
-            {countdown === 0 && (
+            {countdown === 0 && !showSuccessPanel && (
               <Animated.View style={[styles.fullScreenControls, { opacity }]}>
                 {!isPaused ? (
                   <TouchableOpacity
@@ -468,7 +556,6 @@ export default function HealthCheckUpScreen() {
               </Animated.View>
             )}
 
-            {/* Success Panel */}
             {showSuccessPanel && (
               <Animated.View style={[styles.successPanel, { opacity }]}>
                 <BlurView intensity={80} style={styles.successPanelBlur}>
@@ -511,7 +598,6 @@ export default function HealthCheckUpScreen() {
     );
   }
 
-  // Permission error card
   if (permissionError) {
     return (
       <View style={styles.container}>
@@ -521,6 +607,7 @@ export default function HealthCheckUpScreen() {
         >
           <View style={styles.topBar}>
             <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
+            <Text style={styles.topBarTitle}>#1 Remote Car Health Check-Up</Text>
             <TouchableOpacity
               style={styles.backButton}
               onPress={handleBack}
@@ -576,16 +663,15 @@ export default function HealthCheckUpScreen() {
     );
   }
 
-  // Normal desktop/web view
   return (
     <View style={styles.container}>
       <LinearGradient
         colors={['#18181B', '#27272a', '#18181B']}
         style={styles.gradient}
       >
-        {/* Minimal Top Bar */}
         <View style={styles.topBar}>
           <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
+          <Text style={styles.topBarTitle}>#1 Remote Car Health Check-Up</Text>
           <TouchableOpacity
             style={styles.backButton}
             onPress={handleBack}
@@ -610,20 +696,17 @@ export default function HealthCheckUpScreen() {
           <Text style={styles.title}>Health CheckUp</Text>
           <Text style={styles.subtitle}>Record your engine audio for AI analysis</Text>
 
-          {/* Waveform Container */}
           <BlurView intensity={20} style={styles.waveformContainer}>
             <View style={styles.waveformContent}>
               <Text style={styles.waveformTitle}>Live Audio Monitor</Text>
               
               <View style={styles.waveformCanvas}>
-                {/* Scan-line grid */}
                 <View style={styles.gridLines}>
                   {[...Array(5)].map((_, i) => (
                     <View key={i} style={styles.gridLine} />
                   ))}
                 </View>
                 
-                {/* Waveform bars */}
                 <View style={styles.waveform}>
                   {[...Array(50)].map((_, index) => (
                     <React.Fragment key={index}>
@@ -636,7 +719,6 @@ export default function HealthCheckUpScreen() {
                   ))}
                 </View>
 
-                {/* Ambient pulse overlay */}
                 {isRecording && !isPaused && (
                   <View style={styles.pulseOverlay} />
                 )}
@@ -656,7 +738,6 @@ export default function HealthCheckUpScreen() {
             </View>
           </BlurView>
 
-          {/* Controls */}
           <View style={styles.controls}>
             {!isRecording ? (
               <TouchableOpacity
@@ -744,7 +825,6 @@ export default function HealthCheckUpScreen() {
             )}
           </View>
 
-          {/* Instructions */}
           <BlurView intensity={20} style={styles.instructionsCard}>
             <View style={styles.instructionsContent}>
               <IconSymbol
@@ -764,7 +844,6 @@ export default function HealthCheckUpScreen() {
           </BlurView>
         </ScrollView>
 
-        {/* Success Panel for desktop */}
         {showSuccessPanel && !IS_MOBILE && (
           <Modal
             visible={showSuccessPanel}
@@ -813,7 +892,6 @@ export default function HealthCheckUpScreen() {
   );
 }
 
-// Animated wave bar component
 const WaveBar = ({ index, isRecording, time }: { index: number; isRecording: boolean; time: number }) => {
   const [height, setHeight] = useState(4);
 
@@ -866,6 +944,15 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(252, 211, 77, 0.1)',
+  },
+  topBarTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '800',
+    fontStyle: 'italic',
+    color: colors.text,
+    textAlign: 'center',
+    marginHorizontal: 12,
   },
   backButton: {
     flexDirection: 'row',
@@ -1100,7 +1187,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 20,
   },
-  // Full-screen mode styles
   fullScreenContainer: {
     flex: 1,
     backgroundColor: '#000000',
@@ -1139,6 +1225,35 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primary,
     letterSpacing: 2,
+  },
+  detectionBanner: {
+    position: 'absolute',
+    top: 120,
+    left: 20,
+    right: 20,
+    zIndex: 100,
+  },
+  bannerBlur: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.6)',
+  },
+  bannerGradient: {
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  bannerText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    fontStyle: 'italic',
+    color: colors.text,
+    textShadowColor: colors.primary,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   countdownContainer: {
     flex: 1,
@@ -1217,7 +1332,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#EF4444',
   },
-  // Success panel styles
   successPanel: {
     position: 'absolute',
     top: 0,
@@ -1285,7 +1399,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textSecondary,
   },
-  // Error styles
   errorContainer: {
     flex: 1,
     justifyContent: 'center',

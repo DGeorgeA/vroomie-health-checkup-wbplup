@@ -7,18 +7,38 @@ import { BlurView } from 'expo-blur';
 import VroomieLogo from '@/components/VroomieLogo';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { mockAnalyses, mockReports } from '@/data/mockData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Session } from '@/types/entities';
 
 export default function DashboardScreen() {
   const router = useRouter();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [highContrast, setHighContrast] = useState(false);
+  const [sessions, setSessions] = useState<Session[]>([]);
 
-  const totalSessions = mockAnalyses.length;
-  const lastCheck = mockAnalyses.length > 0 ? mockAnalyses[0] : null;
-  const latestSeverity = lastCheck?.anomaly_detected ? 'Issues Found' : 'Healthy';
-  const latestSeverityColor = lastCheck?.anomaly_detected ? '#F97316' : '#10B981';
+  React.useEffect(() => {
+    loadSettings();
+    loadSessions();
+  }, []);
+
+  const loadSettings = async () => {
+    const savedRotation = await AsyncStorage.getItem('logoRotationDisabled');
+    const savedMotion = await AsyncStorage.getItem('reduceMotion');
+    const savedContrast = await AsyncStorage.getItem('highContrast');
+    
+    if (savedRotation) setLogoRotationDisabled(JSON.parse(savedRotation));
+    if (savedMotion) setReduceMotion(JSON.parse(savedMotion));
+    if (savedContrast) setHighContrast(JSON.parse(savedContrast));
+  };
+
+  const loadSessions = async () => {
+    const savedSessions = await AsyncStorage.getItem('sessions');
+    if (savedSessions) {
+      setSessions(JSON.parse(savedSessions));
+    }
+  };
 
   const toggleLogoRotation = async () => {
     const newValue = !logoRotationDisabled;
@@ -26,15 +46,26 @@ export default function DashboardScreen() {
     await AsyncStorage.setItem('logoRotationDisabled', JSON.stringify(newValue));
   };
 
-  React.useEffect(() => {
-    const loadSettings = async () => {
-      const saved = await AsyncStorage.getItem('logoRotationDisabled');
-      if (saved) {
-        setLogoRotationDisabled(JSON.parse(saved));
-      }
-    };
-    loadSettings();
-  }, []);
+  const toggleReduceMotion = async () => {
+    const newValue = !reduceMotion;
+    setReduceMotion(newValue);
+    await AsyncStorage.setItem('reduceMotion', JSON.stringify(newValue));
+  };
+
+  const toggleHighContrast = async () => {
+    const newValue = !highContrast;
+    setHighContrast(newValue);
+    await AsyncStorage.setItem('highContrast', JSON.stringify(newValue));
+  };
+
+  const totalSessions = sessions.length;
+  const lastCheck = sessions.length > 0 ? sessions[0] : null;
+  const latestSeverity = lastCheck 
+    ? lastCheck.anomalyScore >= 51 ? 'Issues Found' : 'Healthy'
+    : 'No Data';
+  const latestSeverityColor = lastCheck 
+    ? lastCheck.anomalyScore >= 51 ? '#F97316' : '#10B981'
+    : colors.textSecondary;
 
   return (
     <View style={styles.container}>
@@ -42,9 +73,9 @@ export default function DashboardScreen() {
         colors={['#18181B', '#27272a', '#18181B']}
         style={styles.gradient}
       >
-        {/* Minimal Top Bar */}
         <View style={styles.topBar}>
           <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
+          <Text style={styles.topBarTitle}>#1 Remote Car Health Check-Up</Text>
           <TouchableOpacity
             style={styles.settingsButton}
             onPress={() => setSettingsVisible(true)}
@@ -65,15 +96,11 @@ export default function DashboardScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          {/* Hero Area */}
           <View style={styles.heroArea}>
             <View style={styles.shimmeringBackground} />
             <VroomieLogo size={160} disableRotation={logoRotationDisabled} />
-            <Text style={styles.appTitle}>Vroomie Health CheckUp</Text>
-            <Text style={styles.appSubtitle}>AI-Powered Predictive Maintenance</Text>
           </View>
 
-          {/* Primary CTAs */}
           <View style={styles.ctaContainer}>
             <TouchableOpacity
               style={styles.primaryCta}
@@ -94,7 +121,6 @@ export default function DashboardScreen() {
                     color={colors.primary}
                   />
                   <Text style={styles.ctaTitle}>Start Health CheckUp</Text>
-                  <Text style={styles.ctaSubtitle}>Record engine audio for analysis</Text>
                 </LinearGradient>
               </BlurView>
             </TouchableOpacity>
@@ -118,13 +144,11 @@ export default function DashboardScreen() {
                     color={colors.primary}
                   />
                   <Text style={styles.ctaTitle}>View Reports</Text>
-                  <Text style={styles.ctaSubtitle}>Browse past checkup results</Text>
                 </LinearGradient>
               </BlurView>
             </TouchableOpacity>
           </View>
 
-          {/* Tiny Info Cards */}
           <View style={styles.infoCards}>
             <BlurView intensity={20} style={styles.infoCard}>
               <View style={styles.infoCardContent}>
@@ -134,7 +158,7 @@ export default function DashboardScreen() {
                   size={24}
                   color={latestSeverityColor}
                 />
-                <Text style={styles.infoCardLabel}>Last Check Result</Text>
+                <Text style={styles.infoCardLabel}>Last Result</Text>
                 <Text style={[styles.infoCardValue, { color: latestSeverityColor }]}>
                   {latestSeverity}
                 </Text>
@@ -149,7 +173,7 @@ export default function DashboardScreen() {
                   size={24}
                   color={colors.primary}
                 />
-                <Text style={styles.infoCardLabel}>Total Sessions Done</Text>
+                <Text style={styles.infoCardLabel}>Total Sessions</Text>
                 <Text style={styles.infoCardValue}>{totalSessions}</Text>
               </View>
             </BlurView>
@@ -164,7 +188,7 @@ export default function DashboardScreen() {
                 />
                 <Text style={styles.infoCardLabel}>Latest Severity</Text>
                 <Text style={styles.infoCardValue}>
-                  {lastCheck ? `${lastCheck.anomaly_score}/100` : 'N/A'}
+                  {lastCheck ? `${lastCheck.anomalyScore}/100` : 'N/A'}
                 </Text>
               </View>
             </BlurView>
@@ -172,7 +196,6 @@ export default function DashboardScreen() {
         </ScrollView>
       </LinearGradient>
 
-      {/* Settings Modal */}
       <Modal
         visible={settingsVisible}
         animationType="fade"
@@ -207,20 +230,46 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
                 <TouchableOpacity
-                  style={[
-                    styles.toggle,
-                    logoRotationDisabled && styles.toggleActive,
-                  ]}
+                  style={[styles.toggle, logoRotationDisabled && styles.toggleActive]}
                   onPress={toggleLogoRotation}
                   accessibilityLabel={`Logo rotation ${logoRotationDisabled ? 'disabled' : 'enabled'}`}
                   accessibilityRole="switch"
                 >
-                  <View
-                    style={[
-                      styles.toggleThumb,
-                      logoRotationDisabled && styles.toggleThumbActive,
-                    ]}
-                  />
+                  <View style={[styles.toggleThumb, logoRotationDisabled && styles.toggleThumbActive]} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Reduce Motion</Text>
+                  <Text style={styles.settingDescription}>
+                    Minimize animations and transitions
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.toggle, reduceMotion && styles.toggleActive]}
+                  onPress={toggleReduceMotion}
+                  accessibilityLabel={`Reduce motion ${reduceMotion ? 'enabled' : 'disabled'}`}
+                  accessibilityRole="switch"
+                >
+                  <View style={[styles.toggleThumb, reduceMotion && styles.toggleThumbActive]} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>High Contrast Mode</Text>
+                  <Text style={styles.settingDescription}>
+                    Increase contrast for better visibility
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.toggle, highContrast && styles.toggleActive]}
+                  onPress={toggleHighContrast}
+                  accessibilityLabel={`High contrast ${highContrast ? 'enabled' : 'disabled'}`}
+                  accessibilityRole="switch"
+                >
+                  <View style={[styles.toggleThumb, highContrast && styles.toggleThumbActive]} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -248,6 +297,15 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(252, 211, 77, 0.1)',
+  },
+  topBarTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '800',
+    fontStyle: 'italic',
+    color: colors.text,
+    textAlign: 'center',
+    marginHorizontal: 12,
   },
   settingsButton: {
     width: 48,
@@ -281,20 +339,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(252, 211, 77, 0.05)',
     borderRadius: 200,
     opacity: 0.5,
-  },
-  appTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: colors.text,
-    marginTop: 24,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  appSubtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginTop: 8,
-    textAlign: 'center',
   },
   ctaContainer: {
     gap: 16,
@@ -331,11 +375,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: colors.text,
-    textAlign: 'center',
-  },
-  ctaSubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
     textAlign: 'center',
   },
   infoCards: {
@@ -403,6 +442,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(252, 211, 77, 0.1)',
   },
   settingInfo: {
     flex: 1,
