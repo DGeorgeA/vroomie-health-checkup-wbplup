@@ -12,7 +12,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, Redirect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from '@/components/IconSymbol';
@@ -22,14 +22,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/app/integrations/supabase/client';
 import { AnomalyPattern } from '@/types/entities';
 import * as DocumentPicker from 'expo-document-picker';
-
-const ADMIN_PASSCODE = '1234';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminScreen() {
   const router = useRouter();
+  const { isAdmin, loading: authLoading, signOut, user } = useAuth();
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passcode, setPasscode] = useState('');
   const [patterns, setPatterns] = useState<AnomalyPattern[]>([]);
   const [anomalyName, setAnomalyName] = useState('');
   const [selectedFile, setSelectedFile] = useState<any>(null);
@@ -63,25 +61,15 @@ export default function AdminScreen() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAdmin) {
       loadPatterns();
     }
-  }, [isAuthenticated, loadPatterns]);
+  }, [isAdmin, loadPatterns]);
 
   const loadSettings = async () => {
     const saved = await AsyncStorage.getItem('logoRotationDisabled');
     if (saved) {
       setLogoRotationDisabled(JSON.parse(saved));
-    }
-  };
-
-  const handlePasscodeSubmit = () => {
-    if (passcode === ADMIN_PASSCODE) {
-      setIsAuthenticated(true);
-      setPasscode('');
-    } else {
-      Alert.alert('Error', 'Invalid passcode');
-      setPasscode('');
     }
   };
 
@@ -210,6 +198,24 @@ export default function AdminScreen() {
     );
   };
 
+  const handleLogout = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            await signOut();
+            router.replace('/');
+          },
+        },
+      ]
+    );
+  };
+
   const showToastMessage = (message: string) => {
     setToastMessage(message);
     setShowToast(true);
@@ -222,70 +228,26 @@ export default function AdminScreen() {
     router.back();
   };
 
-  if (!isAuthenticated) {
+  // Show loading while checking auth
+  if (authLoading) {
     return (
       <View style={styles.container}>
         <LinearGradient
           colors={['#18181B', '#27272a', '#18181B']}
           style={styles.gradient}
         >
-          <View style={styles.topBar}>
-            <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
-            <Text style={styles.topBarTitle}>#1 Remote Car Health Check-Up</Text>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={handleBack}
-              accessibilityLabel="Go back"
-              accessibilityRole="button"
-            >
-              <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
-                size={20}
-                color={colors.primary}
-              />
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.passcodeContainer}>
-            <BlurView intensity={30} style={styles.passcodeCard}>
-              <View style={styles.passcodeContent}>
-                <IconSymbol
-                  ios_icon_name="lock.shield.fill"
-                  android_material_icon_name="security"
-                  size={64}
-                  color={colors.primary}
-                />
-                <Text style={styles.passcodeTitle}>Admin Access</Text>
-                <Text style={styles.passcodeSubtitle}>Enter passcode to continue</Text>
-
-                <TextInput
-                  style={styles.passcodeInput}
-                  placeholder="Enter passcode"
-                  placeholderTextColor={colors.textSecondary}
-                  value={passcode}
-                  onChangeText={setPasscode}
-                  secureTextEntry
-                  keyboardType="number-pad"
-                  maxLength={4}
-                  onSubmitEditing={handlePasscodeSubmit}
-                />
-
-                <TouchableOpacity
-                  style={styles.passcodeButton}
-                  onPress={handlePasscodeSubmit}
-                  accessibilityLabel="Submit passcode"
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.passcodeButtonText}>Submit</Text>
-                </TouchableOpacity>
-              </View>
-            </BlurView>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Checking authentication...</Text>
           </View>
         </LinearGradient>
       </View>
     );
+  }
+
+  // Redirect to login if not admin
+  if (!isAdmin) {
+    return <Redirect href="/admin-login" />;
   }
 
   return (
@@ -319,20 +281,46 @@ export default function AdminScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.headerSection}>
-            <Text style={styles.title}>Admin Panel</Text>
-            <TouchableOpacity
-              style={styles.infoButton}
-              onPress={() => setShowAdminInfo(true)}
-              accessibilityLabel="Admin info"
-              accessibilityRole="button"
-            >
-              <IconSymbol
-                ios_icon_name="info.circle.fill"
-                android_material_icon_name="info"
-                size={24}
-                color={colors.primary}
-              />
-            </TouchableOpacity>
+            <View style={styles.headerLeft}>
+              <Text style={styles.title}>Admin Panel</Text>
+              <View style={styles.userBadge}>
+                <IconSymbol
+                  ios_icon_name="person.circle.fill"
+                  android_material_icon_name="account-circle"
+                  size={16}
+                  color={colors.primary}
+                />
+                <Text style={styles.userEmail}>{user?.email}</Text>
+              </View>
+            </View>
+            <View style={styles.headerRight}>
+              <TouchableOpacity
+                style={styles.infoButton}
+                onPress={() => setShowAdminInfo(true)}
+                accessibilityLabel="Admin info"
+                accessibilityRole="button"
+              >
+                <IconSymbol
+                  ios_icon_name="info.circle.fill"
+                  android_material_icon_name="info"
+                  size={24}
+                  color={colors.primary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.logoutButton}
+                onPress={handleLogout}
+                accessibilityLabel="Logout"
+                accessibilityRole="button"
+              >
+                <IconSymbol
+                  ios_icon_name="rectangle.portrait.and.arrow.right.fill"
+                  android_material_icon_name="logout"
+                  size={24}
+                  color="#EF4444"
+                />
+              </TouchableOpacity>
+            </View>
           </View>
           <Text style={styles.subtitle}>Manage anomaly pattern files</Text>
 
@@ -497,7 +485,7 @@ export default function AdminScreen() {
                 <ScrollView style={styles.infoModalScroll} showsVerticalScrollIndicator={false}>
                   <View style={styles.infoModalContent}>
                     <Text style={styles.infoModalText}>
-                      Admin-only features are now protected and only visible to authorized users.
+                      Admin-only features are now protected with Supabase authentication and only visible to authorized users.
                     </Text>
                     
                     <View style={styles.infoSection}>
@@ -516,10 +504,13 @@ export default function AdminScreen() {
                     <View style={styles.infoSection}>
                       <Text style={styles.infoSectionTitle}>To add admin users:</Text>
                       <Text style={styles.infoSectionText}>
-                        1. Get the user&apos;s ID from Supabase Auth
+                        1. Create a user account in Supabase Auth
                       </Text>
                       <Text style={styles.infoSectionText}>
-                        2. Insert into admin_users table:
+                        2. Get the user&apos;s ID from Supabase Auth
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        3. Insert into admin_users table:
                       </Text>
                       <View style={styles.codeBlock}>
                         <Text style={styles.codeText}>
@@ -530,25 +521,22 @@ export default function AdminScreen() {
                     </View>
 
                     <View style={styles.infoSection}>
-                      <Text style={styles.infoSectionTitle}>Asset Export Feature:</Text>
+                      <Text style={styles.infoSectionTitle}>Session Management:</Text>
                       <Text style={styles.infoSectionText}>
-                        The &quot;Download All Assets&quot; button packages all Play Store assets into a single zip file for easy distribution.
+                        - Admin sessions persist across app restarts
                       </Text>
                       <Text style={styles.infoSectionText}>
-                        - Includes app icon, feature graphic, and screenshots
+                        - Use the logout button to end your session
                       </Text>
                       <Text style={styles.infoSectionText}>
-                        - Automatically sized to Google Play requirements
-                      </Text>
-                      <Text style={styles.infoSectionText}>
-                        - Includes README with upload instructions
+                        - Sessions are secured with Supabase Auth
                       </Text>
                     </View>
 
                     <View style={styles.infoSection}>
                       <Text style={styles.infoSectionTitle}>Current Setup:</Text>
                       <Text style={styles.infoSectionText}>
-                        - Admin passcode: 1234
+                        - Logged in as: {user?.email}
                       </Text>
                       <Text style={styles.infoSectionText}>
                         - Admin users table: admin_users
@@ -575,6 +563,16 @@ const styles = StyleSheet.create({
   },
   gradient: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   topBar: {
     flexDirection: 'row',
@@ -611,65 +609,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.primary,
   },
-  passcodeContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  passcodeCard: {
-    backgroundColor: 'rgba(39, 39, 42, 0.9)',
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: 'rgba(252, 211, 77, 0.4)',
-    overflow: 'hidden',
-    maxWidth: 400,
-    width: '100%',
-  },
-  passcodeContent: {
-    padding: 40,
-    alignItems: 'center',
-    gap: 16,
-  },
-  passcodeTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  passcodeSubtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  passcodeInput: {
-    width: '100%',
-    backgroundColor: 'rgba(252, 211, 77, 0.1)',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(252, 211, 77, 0.3)',
-    padding: 16,
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-    textAlign: 'center',
-    letterSpacing: 8,
-  },
-  passcodeButton: {
-    width: '100%',
-    backgroundColor: 'rgba(252, 211, 77, 0.3)',
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(252, 211, 77, 0.6)',
-    padding: 16,
-    alignItems: 'center',
-  },
-  passcodeButtonText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-  },
   scrollView: {
     flex: 1,
   },
@@ -680,15 +619,40 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 8,
   },
   title: {
     fontSize: 32,
     fontWeight: '800',
     color: colors.text,
     fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  userBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    alignSelf: 'flex-start',
+  },
+  userEmail: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
   infoButton: {
     width: 40,
@@ -697,6 +661,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(252, 211, 77, 0.1)',
     borderWidth: 1,
     borderColor: 'rgba(252, 211, 77, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },

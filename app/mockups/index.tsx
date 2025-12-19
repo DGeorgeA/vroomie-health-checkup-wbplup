@@ -6,14 +6,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
-import { useIsAdmin } from '@/utils/useIsAdmin';
+import { useAuth } from '@/contexts/AuthContext';
 import { exportAllAssets } from '@/utils/assetExporter';
 import { AppIconSVG } from '@/components/assets/AppIconSVG';
 import { FeatureGraphicSVG } from '@/components/assets/FeatureGraphicSVG';
 
 export default function MockupsIndex() {
   const router = useRouter();
-  const { isAdmin, loading: adminLoading } = useIsAdmin();
+  const { isAdmin, loading: adminLoading } = useAuth();
   const [isExporting, setIsExporting] = useState(false);
 
   // Refs for capturing assets
@@ -216,7 +216,7 @@ export default function MockupsIndex() {
           )}
 
           <View style={styles.mockupsGrid}>
-            {mockups.map((mockup, index) => (
+            {mockups.map((mockup) => (
               <TouchableOpacity
                 key={mockup.id}
                 style={styles.mockupCard}

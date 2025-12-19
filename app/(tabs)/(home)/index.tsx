@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal, Animated } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -10,16 +10,16 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Session } from '@/types/entities';
-import { useIsAdmin } from '@/utils/useIsAdmin';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function DashboardScreen() {
   const router = useRouter();
+  const { isAdmin, loading: adminLoading } = useAuth();
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
-  const { isAdmin, loading: adminLoading } = useIsAdmin();
 
   useEffect(() => {
     loadSettings();
