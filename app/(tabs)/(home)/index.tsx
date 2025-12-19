@@ -10,6 +10,7 @@ import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Session } from '@/types/entities';
+import { useIsAdmin } from '@/utils/useIsAdmin';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function DashboardScreen() {
   const [reduceMotion, setReduceMotion] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
 
   useEffect(() => {
     loadSettings();
@@ -195,34 +197,44 @@ export default function DashboardScreen() {
             </BlurView>
           </View>
 
-          <TouchableOpacity
-            style={styles.mockupsButton}
-            onPress={() => router.push('/mockups')}
-            activeOpacity={0.8}
-            accessibilityLabel="Play Store Assets"
-            accessibilityRole="button"
-          >
-            <BlurView intensity={30} style={styles.mockupsBlur}>
-              <LinearGradient
-                colors={['rgba(252, 211, 77, 0.15)', 'rgba(252, 211, 77, 0.05)']}
-                style={styles.mockupsGradient}
-              >
-                <IconSymbol
-                  ios_icon_name="photo.on.rectangle.angled"
-                  android_material_icon_name="collections"
-                  size={32}
-                  color={colors.primary}
-                />
-                <Text style={styles.mockupsText}>Play Store Assets</Text>
-                <IconSymbol
-                  ios_icon_name="chevron.right"
-                  android_material_icon_name="chevron-right"
-                  size={20}
-                  color={colors.textSecondary}
-                />
-              </LinearGradient>
-            </BlurView>
-          </TouchableOpacity>
+          {!adminLoading && isAdmin && (
+            <TouchableOpacity
+              style={styles.mockupsButton}
+              onPress={() => router.push('/mockups')}
+              activeOpacity={0.8}
+              accessibilityLabel="Play Store Assets"
+              accessibilityRole="button"
+            >
+              <BlurView intensity={30} style={styles.mockupsBlur}>
+                <LinearGradient
+                  colors={['rgba(252, 211, 77, 0.15)', 'rgba(252, 211, 77, 0.05)']}
+                  style={styles.mockupsGradient}
+                >
+                  <IconSymbol
+                    ios_icon_name="photo.on.rectangle.angled"
+                    android_material_icon_name="collections"
+                    size={32}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.mockupsText}>Play Store Assets</Text>
+                  <View style={styles.adminBadge}>
+                    <IconSymbol
+                      ios_icon_name="lock.shield.fill"
+                      android_material_icon_name="security"
+                      size={16}
+                      color={colors.primary}
+                    />
+                  </View>
+                  <IconSymbol
+                    ios_icon_name="chevron.right"
+                    android_material_icon_name="chevron-right"
+                    size={20}
+                    color={colors.textSecondary}
+                  />
+                </LinearGradient>
+              </BlurView>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </LinearGradient>
 
@@ -454,6 +466,16 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+  },
+  adminBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(252, 211, 77, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,

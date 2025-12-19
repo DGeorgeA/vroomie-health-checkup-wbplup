@@ -36,6 +36,7 @@ export default function AdminScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [showAdminInfo, setShowAdminInfo] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -317,7 +318,22 @@ export default function AdminScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.title}>Admin Panel</Text>
+          <View style={styles.headerSection}>
+            <Text style={styles.title}>Admin Panel</Text>
+            <TouchableOpacity
+              style={styles.infoButton}
+              onPress={() => setShowAdminInfo(true)}
+              accessibilityLabel="Admin info"
+              accessibilityRole="button"
+            >
+              <IconSymbol
+                ios_icon_name="info.circle.fill"
+                android_material_icon_name="info"
+                size={24}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+          </View>
           <Text style={styles.subtitle}>Manage anomaly pattern files</Text>
 
           <BlurView intensity={20} style={styles.uploadCard}>
@@ -445,6 +461,77 @@ export default function AdminScreen() {
             </BlurView>
           </View>
         )}
+
+        <Modal
+          visible={showAdminInfo}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setShowAdminInfo(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <BlurView intensity={80} style={styles.infoModalBlur}>
+              <View style={styles.infoModalContainer}>
+                <View style={styles.infoModalHeader}>
+                  <IconSymbol
+                    ios_icon_name="lock.shield.fill"
+                    android_material_icon_name="security"
+                    size={32}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.infoModalTitle}>Admin Access Control</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowAdminInfo(false)}
+                    style={styles.infoModalClose}
+                    accessibilityLabel="Close info"
+                    accessibilityRole="button"
+                  >
+                    <IconSymbol
+                      ios_icon_name="xmark.circle.fill"
+                      android_material_icon_name="cancel"
+                      size={28}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.infoModalContent}>
+                  <Text style={styles.infoModalText}>
+                    The "Play Store Assets" button is now visible only to admin users.
+                  </Text>
+                  
+                  <View style={styles.infoSection}>
+                    <Text style={styles.infoSectionTitle}>To add admin users:</Text>
+                    <Text style={styles.infoSectionText}>
+                      1. Get the user&apos;s ID from Supabase Auth
+                    </Text>
+                    <Text style={styles.infoSectionText}>
+                      2. Insert into admin_users table:
+                    </Text>
+                    <View style={styles.codeBlock}>
+                      <Text style={styles.codeText}>
+                        INSERT INTO admin_users (user_id){'\n'}
+                        VALUES (&apos;user-uuid-here&apos;);
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.infoSection}>
+                    <Text style={styles.infoSectionTitle}>Current Setup:</Text>
+                    <Text style={styles.infoSectionText}>
+                      - Admin passcode: 1234
+                    </Text>
+                    <Text style={styles.infoSectionText}>
+                      - Admin users table: admin_users
+                    </Text>
+                    <Text style={styles.infoSectionText}>
+                      - RLS policies enabled
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </BlurView>
+          </View>
+        </Modal>
       </LinearGradient>
     </View>
   );
@@ -560,12 +647,27 @@ const styles = StyleSheet.create({
     paddingTop: 32,
     paddingBottom: 40,
   },
+  headerSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   title: {
     fontSize: 32,
     fontWeight: '800',
     color: colors.text,
-    marginBottom: 8,
     fontStyle: 'italic',
+  },
+  infoButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   subtitle: {
     fontSize: 16,
@@ -723,5 +825,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  infoModalBlur: {
+    width: Platform.OS === 'web' ? '90%' : '90%',
+    maxWidth: 500,
+    borderRadius: 24,
+    overflow: 'hidden',
+    margin: 20,
+  },
+  infoModalContainer: {
+    backgroundColor: 'rgba(39, 39, 42, 0.95)',
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.4)',
+    padding: 24,
+  },
+  infoModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 24,
+  },
+  infoModalTitle: {
+    flex: 1,
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  infoModalClose: {
+    padding: 4,
+  },
+  infoModalContent: {
+    gap: 20,
+  },
+  infoModalText: {
+    fontSize: 16,
+    color: colors.text,
+    lineHeight: 24,
+  },
+  infoSection: {
+    gap: 8,
+  },
+  infoSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.primary,
+    marginBottom: 4,
+  },
+  infoSectionText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  codeBlock: {
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.2)',
+    padding: 12,
+    marginTop: 8,
+  },
+  codeText: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    color: colors.primary,
+    lineHeight: 18,
   },
 });
