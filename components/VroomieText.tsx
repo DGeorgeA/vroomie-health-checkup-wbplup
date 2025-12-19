@@ -29,7 +29,7 @@ const VroomieText: React.FC<VroomieTextProps> = ({
         }),
       ]).start();
     }
-  }, [shouldAnimate]);
+  }, [shouldAnimate, scaleAnim]);
 
   return (
     <Animated.Text

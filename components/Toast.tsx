@@ -148,7 +148,7 @@ const styles = StyleSheet.create({
 
 // Toast Manager
 class ToastManager {
-  private listeners: Array<(toast: ToastProps) => void> = [];
+  private listeners: ((toast: ToastProps) => void)[] = [];
 
   subscribe(listener: (toast: ToastProps) => void) {
     this.listeners.push(listener);

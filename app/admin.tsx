@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -42,20 +42,7 @@ export default function AdminScreen() {
     loadSettings();
   }, []);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadPatterns();
-    }
-  }, [isAuthenticated]);
-
-  const loadSettings = async () => {
-    const saved = await AsyncStorage.getItem('logoRotationDisabled');
-    if (saved) {
-      setLogoRotationDisabled(JSON.parse(saved));
-    }
-  };
-
-  const loadPatterns = async () => {
+  const loadPatterns = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('anomaly_patterns')
@@ -72,6 +59,19 @@ export default function AdminScreen() {
     } catch (error) {
       console.error('Error loading patterns:', error);
       showToastMessage('Failed to load patterns');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadPatterns();
+    }
+  }, [isAuthenticated, loadPatterns]);
+
+  const loadSettings = async () => {
+    const saved = await AsyncStorage.getItem('logoRotationDisabled');
+    if (saved) {
+      setLogoRotationDisabled(JSON.parse(saved));
     }
   };
 
