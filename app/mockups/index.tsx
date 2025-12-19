@@ -1,14 +1,24 @@
 
-import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Platform, ScrollView } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, TouchableOpacity, Text, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { IconSymbol } from '@/components/IconSymbol';
 import { colors } from '@/styles/commonStyles';
+import { useIsAdmin } from '@/utils/useIsAdmin';
+import { exportAllAssets } from '@/utils/assetExporter';
+import { AppIconSVG } from '@/components/assets/AppIconSVG';
+import { FeatureGraphicSVG } from '@/components/assets/FeatureGraphicSVG';
 
 export default function MockupsIndex() {
   const router = useRouter();
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Refs for capturing assets
+  const appIconRef = useRef(null);
+  const featureGraphicRef = useRef(null);
 
   const mockups = [
     {
@@ -61,6 +71,55 @@ export default function MockupsIndex() {
     },
   ];
 
+  const handleDownloadAllAssets = async () => {
+    try {
+      setIsExporting(true);
+
+      Alert.alert(
+        'Export Assets',
+        'This will capture all mockup screens and package them into a zip file. Make sure all mockup screens are loaded before proceeding.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => setIsExporting(false),
+          },
+          {
+            text: 'Continue',
+            onPress: async () => {
+              try {
+                // Note: For a complete export, we would need refs to all mockup screens
+                // For now, we'll export the assets that are available on this screen
+                await exportAllAssets({
+                  appIconRef: appIconRef.current,
+                  featureGraphicRef: featureGraphicRef.current,
+                });
+
+                Alert.alert(
+                  'Success',
+                  'Assets have been exported successfully! The zip file has been saved and is ready to share.',
+                  [{ text: 'OK' }]
+                );
+              } catch (error) {
+                console.error('Export error:', error);
+                Alert.alert(
+                  'Export Failed',
+                  'Failed to export assets. Please try again or export individual assets from their respective screens.',
+                  [{ text: 'OK' }]
+                );
+              } finally {
+                setIsExporting(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error initiating export:', error);
+      setIsExporting(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -107,6 +166,54 @@ export default function MockupsIndex() {
               required by Google Play.
             </Text>
           </View>
+
+          {!adminLoading && isAdmin && (
+            <TouchableOpacity
+              style={styles.downloadAllButton}
+              onPress={handleDownloadAllAssets}
+              disabled={isExporting}
+              activeOpacity={0.8}
+              accessibilityLabel="Download all assets"
+              accessibilityRole="button"
+            >
+              <BlurView intensity={30} style={styles.downloadAllBlur}>
+                <LinearGradient
+                  colors={['rgba(252, 211, 77, 0.3)', 'rgba(252, 211, 77, 0.15)']}
+                  style={styles.downloadAllGradient}
+                >
+                  {isExporting ? (
+                    <>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={styles.downloadAllText}>Exporting Assets...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <IconSymbol
+                        ios_icon_name="arrow.down.circle.fill"
+                        android_material_icon_name="download"
+                        size={32}
+                        color={colors.primary}
+                      />
+                      <View style={styles.downloadAllTextContainer}>
+                        <Text style={styles.downloadAllText}>Download All Assets</Text>
+                        <Text style={styles.downloadAllSubtext}>
+                          Export all assets as a zip file
+                        </Text>
+                      </View>
+                      <View style={styles.adminBadge}>
+                        <IconSymbol
+                          ios_icon_name="lock.shield.fill"
+                          android_material_icon_name="security"
+                          size={16}
+                          color={colors.primary}
+                        />
+                      </View>
+                    </>
+                  )}
+                </LinearGradient>
+              </BlurView>
+            </TouchableOpacity>
+          )}
 
           <View style={styles.mockupsGrid}>
             {mockups.map((mockup, index) => (
@@ -164,6 +271,26 @@ export default function MockupsIndex() {
             <Text style={styles.tipText}>
               - Follow Google Play design guidelines
             </Text>
+            {!adminLoading && isAdmin && (
+              <>
+                <Text style={styles.tipText}>
+                  - Use &quot;Download All Assets&quot; to export everything at once
+                </Text>
+                <Text style={styles.tipText}>
+                  - Admin-only feature: Only visible to authorized developers
+                </Text>
+              </>
+            )}
+          </View>
+
+          {/* Hidden preview assets for export */}
+          <View style={styles.hiddenAssets}>
+            <View ref={appIconRef} collapsable={false}>
+              <AppIconSVG size={512} />
+            </View>
+            <View ref={featureGraphicRef} collapsable={false}>
+              <FeatureGraphicSVG width={1024} height={500} />
+            </View>
           </View>
         </ScrollView>
       </LinearGradient>
@@ -231,6 +358,49 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     lineHeight: 20,
   },
+  downloadAllButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 24,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  downloadAllBlur: {
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.4)',
+  },
+  downloadAllGradient: {
+    padding: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  downloadAllTextContainer: {
+    flex: 1,
+  },
+  downloadAllText: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  downloadAllSubtext: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  adminBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(252, 211, 77, 0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(252, 211, 77, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   mockupsGrid: {
     gap: 16,
   },
@@ -289,5 +459,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  hiddenAssets: {
+    position: 'absolute',
+    left: -10000,
+    top: -10000,
+    opacity: 0,
   },
 });

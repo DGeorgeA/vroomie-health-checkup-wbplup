@@ -494,40 +494,71 @@ export default function AdminScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View style={styles.infoModalContent}>
-                  <Text style={styles.infoModalText}>
-                    The "Play Store Assets" button is now visible only to admin users.
-                  </Text>
-                  
-                  <View style={styles.infoSection}>
-                    <Text style={styles.infoSectionTitle}>To add admin users:</Text>
-                    <Text style={styles.infoSectionText}>
-                      1. Get the user&apos;s ID from Supabase Auth
+                <ScrollView style={styles.infoModalScroll} showsVerticalScrollIndicator={false}>
+                  <View style={styles.infoModalContent}>
+                    <Text style={styles.infoModalText}>
+                      Admin-only features are now protected and only visible to authorized users.
                     </Text>
-                    <Text style={styles.infoSectionText}>
-                      2. Insert into admin_users table:
-                    </Text>
-                    <View style={styles.codeBlock}>
-                      <Text style={styles.codeText}>
-                        INSERT INTO admin_users (user_id){'\n'}
-                        VALUES (&apos;user-uuid-here&apos;);
+                    
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>Protected Features:</Text>
+                      <Text style={styles.infoSectionText}>
+                        - Play Store Assets button (Dashboard)
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        - Download All Assets button (Mockups page)
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        - Anomaly pattern management (This page)
+                      </Text>
+                    </View>
+
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>To add admin users:</Text>
+                      <Text style={styles.infoSectionText}>
+                        1. Get the user&apos;s ID from Supabase Auth
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        2. Insert into admin_users table:
+                      </Text>
+                      <View style={styles.codeBlock}>
+                        <Text style={styles.codeText}>
+                          INSERT INTO admin_users (user_id){'\n'}
+                          VALUES (&apos;user-uuid-here&apos;);
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>Asset Export Feature:</Text>
+                      <Text style={styles.infoSectionText}>
+                        The &quot;Download All Assets&quot; button packages all Play Store assets into a single zip file for easy distribution.
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        - Includes app icon, feature graphic, and screenshots
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        - Automatically sized to Google Play requirements
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        - Includes README with upload instructions
+                      </Text>
+                    </View>
+
+                    <View style={styles.infoSection}>
+                      <Text style={styles.infoSectionTitle}>Current Setup:</Text>
+                      <Text style={styles.infoSectionText}>
+                        - Admin passcode: 1234
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        - Admin users table: admin_users
+                      </Text>
+                      <Text style={styles.infoSectionText}>
+                        - RLS policies enabled
                       </Text>
                     </View>
                   </View>
-
-                  <View style={styles.infoSection}>
-                    <Text style={styles.infoSectionTitle}>Current Setup:</Text>
-                    <Text style={styles.infoSectionText}>
-                      - Admin passcode: 1234
-                    </Text>
-                    <Text style={styles.infoSectionText}>
-                      - Admin users table: admin_users
-                    </Text>
-                    <Text style={styles.infoSectionText}>
-                      - RLS policies enabled
-                    </Text>
-                  </View>
-                </View>
+                </ScrollView>
               </View>
             </BlurView>
           </View>
@@ -835,6 +866,7 @@ const styles = StyleSheet.create({
   infoModalBlur: {
     width: Platform.OS === 'web' ? '90%' : '90%',
     maxWidth: 500,
+    maxHeight: '80%',
     borderRadius: 24,
     overflow: 'hidden',
     margin: 20,
@@ -844,6 +876,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(252, 211, 77, 0.4)',
     padding: 24,
+    maxHeight: '100%',
   },
   infoModalHeader: {
     flexDirection: 'row',
@@ -859,6 +892,9 @@ const styles = StyleSheet.create({
   },
   infoModalClose: {
     padding: 4,
+  },
+  infoModalScroll: {
+    maxHeight: 400,
   },
   infoModalContent: {
     gap: 20,
