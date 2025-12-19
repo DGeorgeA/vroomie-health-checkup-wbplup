@@ -57,6 +57,7 @@ export default function RootLayout() {
           <Stack.Screen name="health-checkup" />
           <Stack.Screen name="reports" />
           <Stack.Screen name="admin" />
+          <Stack.Screen name="mockups" />
           <Stack.Screen name="+not-found" />
         </Stack>
       </Animated.View>

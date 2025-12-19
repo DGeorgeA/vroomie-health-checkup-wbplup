@@ -194,6 +194,35 @@ export default function DashboardScreen() {
               </View>
             </BlurView>
           </View>
+
+          <TouchableOpacity
+            style={styles.mockupsButton}
+            onPress={() => router.push('/mockups')}
+            activeOpacity={0.8}
+            accessibilityLabel="Play Store Assets"
+            accessibilityRole="button"
+          >
+            <BlurView intensity={30} style={styles.mockupsBlur}>
+              <LinearGradient
+                colors={['rgba(252, 211, 77, 0.15)', 'rgba(252, 211, 77, 0.05)']}
+                style={styles.mockupsGradient}
+              >
+                <IconSymbol
+                  ios_icon_name="photo.on.rectangle.angled"
+                  android_material_icon_name="collections"
+                  size={32}
+                  color={colors.primary}
+                />
+                <Text style={styles.mockupsText}>Play Store Assets</Text>
+                <IconSymbol
+                  ios_icon_name="chevron.right"
+                  android_material_icon_name="chevron-right"
+                  size={20}
+                  color={colors.textSecondary}
+                />
+              </LinearGradient>
+            </BlurView>
+          </TouchableOpacity>
         </ScrollView>
       </LinearGradient>
 
@@ -404,6 +433,27 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     color: colors.primary,
+  },
+  mockupsButton: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginTop: 24,
+  },
+  mockupsBlur: {
+    borderWidth: 2,
+    borderColor: 'rgba(252, 211, 77, 0.3)',
+  },
+  mockupsGradient: {
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  mockupsText: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
   },
   modalOverlay: {
     flex: 1,
