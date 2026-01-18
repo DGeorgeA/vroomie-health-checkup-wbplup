@@ -39,12 +39,16 @@ export default function AdminLoginScreen() {
     if (!authLoading && isAdmin) {
       router.replace('/admin');
     }
-  }, [isAdmin, authLoading]);
+  }, [isAdmin, authLoading, router]);
 
   const loadSettings = async () => {
-    const saved = await AsyncStorage.getItem('logoRotationDisabled');
-    if (saved) {
-      setLogoRotationDisabled(JSON.parse(saved));
+    try {
+      const saved = await AsyncStorage.getItem('logoRotationDisabled');
+      if (saved) {
+        setLogoRotationDisabled(JSON.parse(saved));
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
     }
   };
 

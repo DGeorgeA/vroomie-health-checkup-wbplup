@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -35,22 +35,25 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const WAVEFORM_HEIGHT = Platform.OS === 'web' ? 300 : 200;
 const IS_MOBILE = Platform.OS === 'ios' || Platform.OS === 'android';
 
+// State machine states
+type UIState = 'IDLE' | 'INIT_CHECK' | 'COUNTDOWN' | 'RECORDING_ACTIVE' | 'ANALYSIS' | 'RESULT';
+
 export default function HealthCheckUpScreen() {
   const router = useRouter();
-  const [isRecording, setIsRecording] = useState(false);
+  
+  // State machine
+  const [uiState, setUiState] = useState<UIState>('IDLE');
+  
   const [isPaused, setIsPaused] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
   const [voiceMuted, setVoiceMuted] = useState(false);
-  const [isFullScreen, setIsFullScreen] = useState(false);
   const [countdown, setCountdown] = useState(0);
-  const [showSuccessPanel, setShowSuccessPanel] = useState(false);
   const [permissionError, setPermissionError] = useState(false);
   const [detectedAnomalyName, setDetectedAnomalyName] = useState<string | null>(null);
   const [showBanner, setShowBanner] = useState(false);
-  const [isAutoStarting, setIsAutoStarting] = useState(false);
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
@@ -59,37 +62,36 @@ export default function HealthCheckUpScreen() {
   const bannerAnim = useRef(new Animated.Value(0)).current;
   const backPressCount = useRef(0);
   const announcedAnomalies = useRef<Set<string>>(new Set());
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioInitPromise = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     console.log('Health CheckUp screen loaded');
-    requestPermissions();
     loadSettings();
+    // Preload audio initialization on mount (non-blocking)
+    asyncInitializeAudio();
   }, []);
 
-  useEffect(() => {
-    // Auto-start recording when permissions are granted
-    if (hasPermission && !isRecording && !isAutoStarting && !permissionError) {
-      console.log('Auto-starting recording after permission granted');
-      setIsAutoStarting(true);
-      startRecording();
-    }
-  }, [hasPermission, isRecording, permissionError]);
-
   const loadSettings = async () => {
-    const savedRotation = await AsyncStorage.getItem('logoRotationDisabled');
-    const savedVoiceMuted = await AsyncStorage.getItem('voiceMuted');
-    
-    if (savedRotation) {
-      setLogoRotationDisabled(JSON.parse(savedRotation));
-    }
-    if (savedVoiceMuted) {
-      setVoiceMuted(JSON.parse(savedVoiceMuted));
+    try {
+      const savedRotation = await AsyncStorage.getItem('logoRotationDisabled');
+      const savedVoiceMuted = await AsyncStorage.getItem('voiceMuted');
+      
+      if (savedRotation) {
+        setLogoRotationDisabled(JSON.parse(savedRotation));
+      }
+      if (savedVoiceMuted) {
+        setVoiceMuted(JSON.parse(savedVoiceMuted));
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
     }
   };
 
+  // Recording time counter
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isRecording && !isPaused) {
+    if (uiState === 'RECORDING_ACTIVE' && !isPaused) {
       interval = setInterval(() => {
         setRecordingTime(Math.floor((Date.now() - recordingStartTime.current) / 1000));
       }, 100);
@@ -97,29 +99,56 @@ export default function HealthCheckUpScreen() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isRecording, isPaused]);
+  }, [uiState, isPaused]);
 
-  const requestPermissions = async () => {
-    try {
-      console.log('Requesting microphone permissions');
-      const { granted } = await requestRecordingPermissionsAsync();
-      if (granted) {
-        console.log('Microphone permission granted');
-        setHasPermission(true);
-        setPermissionError(false);
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          allowsRecording: true,
-        });
-      } else {
-        console.log('Microphone permission denied');
-        setHasPermission(false);
+  // Async audio initialization (non-blocking)
+  const asyncInitializeAudio = async () => {
+    if (audioInitPromise.current) {
+      console.log('Audio initialization already in progress');
+      return audioInitPromise.current;
+    }
+
+    console.log('Starting async audio initialization (non-blocking)');
+    
+    audioInitPromise.current = (async () => {
+      try {
+        // Request microphone permission
+        const { granted } = await requestRecordingPermissionsAsync();
+        if (granted) {
+          console.log('✅ Microphone permission granted');
+          setHasPermission(true);
+          setPermissionError(false);
+          await setAudioModeAsync({
+            playsInSilentMode: true,
+            allowsRecording: true,
+          });
+        } else {
+          console.log('❌ Microphone permission denied');
+          setHasPermission(false);
+          setPermissionError(true);
+        }
+
+        // Preload patterns from Supabase (non-blocking)
+        try {
+          const { data: patterns, error } = await supabase
+            .from('anomaly_patterns')
+            .select('*');
+          
+          if (error) {
+            console.warn('Pattern preload failed (non-critical):', error);
+          } else {
+            console.log(`✅ Preloaded ${patterns?.length || 0} anomaly patterns`);
+          }
+        } catch (err) {
+          console.warn('Pattern preload error (non-critical):', err);
+        }
+      } catch (error) {
+        console.error('Audio initialization error:', error);
         setPermissionError(true);
       }
-    } catch (error) {
-      console.error('Error requesting permissions:', error);
-      setPermissionError(true);
-    }
+    })();
+
+    return audioInitPromise.current;
   };
 
   const speakAnomaly = async (anomalyName: string) => {
@@ -150,49 +179,93 @@ export default function HealthCheckUpScreen() {
     }
   };
 
-  const startCountdown = () => {
-    console.log('Starting countdown');
-    setCountdown(3);
-    const countdownInterval = setInterval(() => {
+  // Start countdown timer (3, 2, 1) - wrapped in useCallback to satisfy linting
+  const startCountdownTimer = useCallback((seconds: number) => {
+    console.log(`Starting countdown from ${seconds}`);
+    setCountdown(seconds);
+    
+    // Clear any existing timer
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+    }
+
+    countdownTimerRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          clearInterval(countdownInterval);
-          startRecordingAfterCountdown();
+          if (countdownTimerRef.current) {
+            clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+          }
+          // Countdown complete - force start microphone
+          onCountdownComplete();
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
+  }, []);
+
+  // Called when countdown reaches 0
+  const onCountdownComplete = async () => {
+    console.log('🎯 Countdown complete - forcing microphone start');
+    
+    // Force start recording regardless of permission state
+    await forceStartMicrophone();
   };
 
-  const startRecordingAfterCountdown = async () => {
+  // Force start microphone recording
+  const forceStartMicrophone = async () => {
+    console.log('🎤 Force starting microphone');
+    
     try {
-      console.log('Starting recording after countdown');
+      // If permission not granted yet, request it now (during countdown)
+      if (!hasPermission) {
+        console.log('Permission not granted yet, requesting now...');
+        const { granted } = await requestRecordingPermissionsAsync();
+        if (!granted) {
+          console.error('❌ Permission denied - cannot start recording');
+          Alert.alert('Permission Required', 'Microphone access is required to record engine audio.');
+          setUiState('IDLE');
+          exitFullScreen();
+          return;
+        }
+        setHasPermission(true);
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          allowsRecording: true,
+        });
+      }
+
+      // Prepare and start recording
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       recordingStartTime.current = Date.now();
-      setIsRecording(true);
       setIsPaused(false);
-      console.log('Recording started successfully');
+      
+      // Transition to RECORDING_ACTIVE state
+      setUiState('RECORDING_ACTIVE');
+      console.log('✅ Recording started - state: RECORDING_ACTIVE');
+      
     } catch (error) {
-      console.error('Error starting recording:', error);
+      console.error('❌ Error starting recording:', error);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
-      setIsFullScreen(false);
-      setIsAutoStarting(false);
+      setUiState('IDLE');
+      exitFullScreen();
     }
   };
 
-  const startRecording = async () => {
-    if (!hasPermission) {
-      console.log('No permission, requesting again');
-      await requestPermissions();
-      return;
-    }
-
-    console.log('User tapped Start Health Checkup - starting recording immediately');
-
+  // Main entry point - user taps "Start Health Check"
+  const onPressStartHealthCheck = () => {
+    console.log('🚀 User tapped Start Health Check');
+    
+    // IMMEDIATE UI transition to COUNTDOWN (non-blocking)
+    setUiState('COUNTDOWN');
+    
+    // Start countdown timer immediately
+    startCountdownTimer(3);
+    
+    // Show full screen on mobile
     if (IS_MOBILE) {
-      setIsFullScreen(true);
       Animated.spring(fullScreenAnim, {
         toValue: 1,
         useNativeDriver: true,
@@ -203,8 +276,9 @@ export default function HealthCheckUpScreen() {
 
     // Reset announced anomalies for new session
     announcedAnomalies.current.clear();
-
-    startCountdown();
+    
+    // Audio initialization runs in parallel (non-blocking)
+    asyncInitializeAudio();
   };
 
   const pauseRecording = async () => {
@@ -230,13 +304,14 @@ export default function HealthCheckUpScreen() {
   const stopRecording = async () => {
     try {
       console.log('User stopped recording');
+      setUiState('ANALYSIS');
       await audioRecorder.stop();
-      setIsRecording(false);
       setIsPaused(false);
       await saveAnalysis();
     } catch (error) {
       console.error('Error stopping recording:', error);
       Alert.alert('Error', 'Failed to stop recording.');
+      setUiState('IDLE');
     }
   };
 
@@ -274,6 +349,7 @@ export default function HealthCheckUpScreen() {
   const saveAnalysis = async () => {
     if (!audioRecorder.uri) {
       Alert.alert('Error', 'No recording available to save.');
+      setUiState('IDLE');
       return;
     }
 
@@ -292,10 +368,15 @@ export default function HealthCheckUpScreen() {
         const rand = Math.random();
         let severity: 'low' | 'medium' | 'high' | 'critical';
         
-        if (rand < 0.25) severity = 'low';
-        else if (rand < 0.75) severity = 'medium';
-        else if (rand < 0.95) severity = 'high';
-        else severity = 'critical';
+        if (rand < 0.25) {
+          severity = 'low';
+        } else if (rand < 0.75) {
+          severity = 'medium';
+        } else if (rand < 0.95) {
+          severity = 'high';
+        } else {
+          severity = 'critical';
+        }
 
         if (severity === 'high' || severity === 'critical') {
           hasHighOrCritical = true;
@@ -346,36 +427,25 @@ export default function HealthCheckUpScreen() {
         setIsSaving(false);
         setRecordingTime(0);
         
-        if (matchedAnomaly) {
-          setShowBanner(true);
-          Animated.spring(bannerAnim, {
-            toValue: 1,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 8,
-          }).start();
-          
-          setTimeout(() => {
-            setShowSuccessPanel(true);
-          }, 3000);
-        } else {
-          setShowBanner(true);
-          Animated.spring(bannerAnim, {
-            toValue: 1,
-            useNativeDriver: true,
-            tension: 50,
-            friction: 8,
-          }).start();
-          
-          setTimeout(() => {
-            setShowSuccessPanel(true);
-          }, 3000);
-        }
+        // Show banner
+        setShowBanner(true);
+        Animated.spring(bannerAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 50,
+          friction: 8,
+        }).start();
+        
+        // Transition to RESULT state
+        setTimeout(() => {
+          setUiState('RESULT');
+        }, 3000);
       }, 1500);
 
     } catch (error) {
       console.error('Error saving analysis:', error);
       setIsSaving(false);
+      setUiState('IDLE');
       Alert.alert('Error', 'Failed to save analysis.');
     }
   };
@@ -388,17 +458,10 @@ export default function HealthCheckUpScreen() {
 
   const handleBack = () => {
     console.log('User tapped back button');
-    if (isFullScreen) {
-      if (backPressCount.current === 0) {
-        backPressCount.current = 1;
-        exitFullScreen();
-        setTimeout(() => {
-          backPressCount.current = 0;
-        }, 2000);
-      } else {
-        router.back();
-      }
-    } else if (isRecording) {
+    
+    if (uiState === 'COUNTDOWN') {
+      exitFullScreen();
+    } else if (uiState === 'RECORDING_ACTIVE') {
       Alert.alert(
         'Recording in Progress',
         'Stop recording before going back?',
@@ -420,21 +483,27 @@ export default function HealthCheckUpScreen() {
 
   const exitFullScreen = () => {
     console.log('Exiting full screen mode');
+    
+    // Clear countdown timer if active
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    
     Animated.timing(fullScreenAnim, {
       toValue: 0,
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      setIsFullScreen(false);
       setShowBanner(false);
       bannerAnim.setValue(0);
-      setIsAutoStarting(false);
+      setUiState('IDLE');
+      setCountdown(0);
     });
   };
 
   const handleViewReport = () => {
     console.log('User navigating to reports');
-    setShowSuccessPanel(false);
     setShowBanner(false);
     bannerAnim.setValue(0);
     exitFullScreen();
@@ -443,14 +512,14 @@ export default function HealthCheckUpScreen() {
 
   const handleReturnHome = () => {
     console.log('User returning to home');
-    setShowSuccessPanel(false);
     setShowBanner(false);
     bannerAnim.setValue(0);
     exitFullScreen();
     router.back();
   };
 
-  if (isFullScreen && IS_MOBILE) {
+  // Full screen recording view (mobile)
+  if ((uiState === 'COUNTDOWN' || uiState === 'RECORDING_ACTIVE' || uiState === 'ANALYSIS' || uiState === 'RESULT') && IS_MOBILE) {
     const scale = fullScreenAnim.interpolate({
       inputRange: [0, 1],
       outputRange: [0.8, 1],
@@ -468,7 +537,7 @@ export default function HealthCheckUpScreen() {
 
     return (
       <Modal
-        visible={isFullScreen}
+        visible={true}
         animationType="none"
         transparent={false}
         onRequestClose={handleBack}
@@ -531,13 +600,14 @@ export default function HealthCheckUpScreen() {
               </Animated.View>
             )}
 
-            {countdown > 0 && (
+            {uiState === 'COUNTDOWN' && countdown > 0 && (
               <Animated.View style={[styles.countdownContainer, { opacity, transform: [{ scale }] }]}>
+                <VroomieLogo size={80} disableRotation={false} />
                 <Text style={styles.countdownText}>{countdown}</Text>
               </Animated.View>
             )}
 
-            {countdown === 0 && (
+            {(uiState === 'RECORDING_ACTIVE' || uiState === 'ANALYSIS') && (
               <Animated.View style={[styles.fullScreenWaveformContainer, { opacity, transform: [{ scale }] }]}>
                 <View style={styles.fullScreenWaveform}>
                   <View style={styles.gridLines}>
@@ -551,14 +621,14 @@ export default function HealthCheckUpScreen() {
                       <React.Fragment key={index}>
                         <WaveBar 
                           index={index} 
-                          isRecording={isRecording && !isPaused}
+                          isRecording={uiState === 'RECORDING_ACTIVE' && !isPaused}
                           time={recordingTime}
                         />
                       </React.Fragment>
                     ))}
                   </View>
 
-                  {isRecording && !isPaused && (
+                  {uiState === 'RECORDING_ACTIVE' && !isPaused && (
                     <View style={styles.pulseOverlay} />
                   )}
                 </View>
@@ -569,7 +639,7 @@ export default function HealthCheckUpScreen() {
               </Animated.View>
             )}
 
-            {countdown === 0 && !showSuccessPanel && (
+            {uiState === 'RECORDING_ACTIVE' && (
               <Animated.View style={[styles.fullScreenControls, { opacity }]}>
                 {!isPaused ? (
                   <TouchableOpacity
@@ -629,7 +699,7 @@ export default function HealthCheckUpScreen() {
               </Animated.View>
             )}
 
-            {showSuccessPanel && (
+            {uiState === 'RESULT' && (
               <Animated.View style={[styles.successPanel, { opacity }]}>
                 <BlurView intensity={80} style={styles.successPanelBlur}>
                   <View style={styles.successPanelContent}>
@@ -671,7 +741,8 @@ export default function HealthCheckUpScreen() {
     );
   }
 
-  if (permissionError) {
+  // Permission error screen
+  if (permissionError && uiState === 'IDLE') {
     return (
       <View style={styles.container}>
         <LinearGradient
@@ -713,7 +784,7 @@ export default function HealthCheckUpScreen() {
                 
                 <TouchableOpacity
                   style={styles.errorButton}
-                  onPress={requestPermissions}
+                  onPress={asyncInitializeAudio}
                   accessibilityLabel="Request permission"
                   accessibilityRole="button"
                 >
@@ -736,42 +807,7 @@ export default function HealthCheckUpScreen() {
     );
   }
 
-  // Show loading state while auto-starting
-  if (isAutoStarting && !isFullScreen) {
-    return (
-      <View style={styles.container}>
-        <LinearGradient
-          colors={['#18181B', '#27272a', '#18181B']}
-          style={styles.gradient}
-        >
-          <View style={styles.topBar}>
-            <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
-            <Text style={styles.topBarTitle}>#1 Remote Car Health Check-Up</Text>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={handleBack}
-              accessibilityLabel="Go back"
-              accessibilityRole="button"
-            >
-              <IconSymbol
-                ios_icon_name="chevron.left"
-                android_material_icon_name="arrow-back"
-                size={20}
-                color={colors.primary}
-              />
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.loadingContainer}>
-            <VroomieLogo size={80} disableRotation={false} />
-            <Text style={styles.loadingText}>Starting Health CheckUp...</Text>
-          </View>
-        </LinearGradient>
-      </View>
-    );
-  }
-
+  // Main idle screen
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -803,111 +839,30 @@ export default function HealthCheckUpScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.title}>Health CheckUp</Text>
-          <Text style={styles.subtitle}>Recording will start automatically</Text>
+          <Text style={styles.subtitle}>Tap to start recording engine audio</Text>
 
-          <BlurView intensity={20} style={styles.waveformContainer}>
-            <View style={styles.waveformContent}>
-              <Text style={styles.waveformTitle}>Live Audio Monitor</Text>
-              
-              <View style={styles.waveformCanvas}>
-                <View style={styles.gridLines}>
-                  {[...Array(5)].map((_, i) => (
-                    <View key={i} style={styles.gridLine} />
-                  ))}
-                </View>
-                
-                <View style={styles.waveform}>
-                  {[...Array(50)].map((_, index) => (
-                    <React.Fragment key={index}>
-                      <WaveBar 
-                        index={index} 
-                        isRecording={isRecording && !isPaused}
-                        time={recordingTime}
-                      />
-                    </React.Fragment>
-                  ))}
-                </View>
-
-                {isRecording && !isPaused && (
-                  <View style={styles.pulseOverlay} />
-                )}
-              </View>
-
-              {isRecording && (
-                <View style={styles.recordingIndicator}>
-                  <View style={[styles.recordingDot, isPaused && styles.recordingDotPaused]} />
-                  <Text style={styles.recordingTime}>{formatTime(recordingTime)}</Text>
-                  {isPaused && <Text style={styles.pausedText}>PAUSED</Text>}
-                </View>
-              )}
-
-              {!isRecording && (
-                <Text style={styles.waveformHint}>Preparing to record...</Text>
-              )}
-            </View>
-          </BlurView>
-
-          {isRecording && (
-            <View style={styles.controls}>
-              <View style={styles.activeControls}>
-                {!isPaused ? (
-                  <TouchableOpacity
-                    style={styles.pauseButton}
-                    onPress={pauseRecording}
-                    accessibilityLabel="Pause recording"
-                    accessibilityRole="button"
-                  >
-                    <BlurView intensity={30} style={styles.controlButtonBlur}>
-                      <IconSymbol
-                        ios_icon_name="pause.circle.fill"
-                        android_material_icon_name="pause-circle"
-                        size={48}
-                        color={colors.primary}
-                      />
-                      <Text style={styles.controlButtonText}>Pause</Text>
-                    </BlurView>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.resumeButton}
-                    onPress={resumeRecording}
-                    accessibilityLabel="Resume recording"
-                    accessibilityRole="button"
-                  >
-                    <BlurView intensity={30} style={styles.controlButtonBlur}>
-                      <IconSymbol
-                        ios_icon_name="play.circle.fill"
-                        android_material_icon_name="play-circle"
-                        size={48}
-                        color={colors.primary}
-                      />
-                      <Text style={styles.controlButtonText}>Resume</Text>
-                    </BlurView>
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity
-                  style={styles.stopButton}
-                  onPress={stopRecording}
-                  disabled={isSaving}
-                  accessibilityLabel="Stop recording"
-                  accessibilityRole="button"
-                >
-                  <BlurView intensity={30} style={styles.stopButtonBlur}>
-                    <IconSymbol
-                      ios_icon_name="stop.circle.fill"
-                      android_material_icon_name="stop-circle"
-                      size={48}
-                      color="#EF4444"
-                    />
-                    <Text style={styles.stopButtonText}>
-                      {isSaving ? 'Analyzing...' : 'Stop & Analyze'}
-                    </Text>
-                  </BlurView>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+          <TouchableOpacity
+            style={styles.startButton}
+            onPress={onPressStartHealthCheck}
+            accessibilityLabel="Start Health Check"
+            accessibilityRole="button"
+          >
+            <BlurView intensity={30} style={styles.startButtonBlur}>
+              <LinearGradient
+                colors={['rgba(252, 211, 77, 0.4)', 'rgba(252, 211, 77, 0.2)']}
+                style={styles.startButtonGradient}
+              >
+                <VroomieLogo size={64} disableRotation={logoRotationDisabled} />
+                <Text style={styles.startButtonText}>Start Health Check</Text>
+                <IconSymbol
+                  ios_icon_name="mic.circle.fill"
+                  android_material_icon_name="mic"
+                  size={48}
+                  color={colors.primary}
+                />
+              </LinearGradient>
+            </BlurView>
+          </TouchableOpacity>
 
           <BlurView intensity={20} style={styles.instructionsCard}>
             <View style={styles.instructionsContent}>
@@ -928,12 +883,12 @@ export default function HealthCheckUpScreen() {
           </BlurView>
         </ScrollView>
 
-        {showSuccessPanel && !IS_MOBILE && (
+        {uiState === 'RESULT' && !IS_MOBILE && (
           <Modal
-            visible={showSuccessPanel}
+            visible={true}
             animationType="fade"
             transparent={true}
-            onRequestClose={() => setShowSuccessPanel(false)}
+            onRequestClose={() => setUiState('IDLE')}
           >
             <View style={styles.modalOverlay}>
               <BlurView intensity={80} style={styles.successPanelBlur}>
@@ -1074,152 +1029,34 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 32,
   },
-  waveformContainer: {
-    backgroundColor: 'rgba(39, 39, 42, 0.8)',
+  startButton: {
     borderRadius: 24,
-    borderWidth: 2,
-    borderColor: 'rgba(252, 211, 77, 0.3)',
     overflow: 'hidden',
-    marginBottom: 24,
-    height: WAVEFORM_HEIGHT + 120,
+    marginBottom: 32,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.3,
     shadowRadius: 16,
     elevation: 8,
   },
-  waveformContent: {
-    padding: 20,
-    flex: 1,
-  },
-  waveformTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  waveformCanvas: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-    borderRadius: 16,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  gridLines: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-  },
-  gridLine: {
-    height: 1,
-    backgroundColor: 'rgba(252, 211, 77, 0.1)',
-  },
-  waveform: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    height: '100%',
-    paddingHorizontal: 8,
-    gap: 2,
-  },
-  waveBar: {
-    flex: 1,
-    borderRadius: 2,
-    minHeight: 4,
-  },
-  pulseOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(252, 211, 77, 0.05)',
-  },
-  recordingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    gap: 12,
-  },
-  recordingDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#EF4444',
-  },
-  recordingDotPaused: {
-    backgroundColor: colors.primary,
-  },
-  recordingTime: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  pausedText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    letterSpacing: 2,
-  },
-  waveformHint: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  controls: {
-    marginBottom: 24,
-  },
-  activeControls: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  pauseButton: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  resumeButton: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  stopButton: {
-    flex: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  controlButtonBlur: {
+  startButtonBlur: {
     backgroundColor: 'rgba(39, 39, 42, 0.8)',
     borderWidth: 2,
-    borderColor: 'rgba(252, 211, 77, 0.4)',
-    padding: 20,
-    alignItems: 'center',
-    gap: 8,
+    borderColor: 'rgba(252, 211, 77, 0.5)',
   },
-  stopButtonBlur: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    borderWidth: 2,
-    borderColor: '#EF4444',
-    padding: 20,
+  startButtonGradient: {
+    padding: 40,
     alignItems: 'center',
-    gap: 8,
+    gap: 20,
   },
-  controlButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
+  startButtonText: {
+    fontSize: 24,
+    fontWeight: '800',
+    fontStyle: 'italic',
     color: colors.text,
-  },
-  stopButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#EF4444',
+    textShadowColor: colors.primary,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
   instructionsCard: {
     backgroundColor: 'rgba(39, 39, 42, 0.6)',
@@ -1247,17 +1084,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 24,
-  },
-  loadingText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.primary,
   },
   fullScreenContainer: {
     flex: 1,
@@ -1331,6 +1157,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 32,
   },
   countdownText: {
     fontSize: 120,
@@ -1355,6 +1182,40 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderWidth: 2,
     borderColor: 'rgba(252, 211, 77, 0.3)',
+  },
+  gridLines: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  gridLine: {
+    height: 1,
+    backgroundColor: 'rgba(252, 211, 77, 0.1)',
+  },
+  waveform: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    height: '100%',
+    paddingHorizontal: 8,
+    gap: 2,
+  },
+  waveBar: {
+    flex: 1,
+    borderRadius: 2,
+    minHeight: 4,
+  },
+  pulseOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(252, 211, 77, 0.05)',
   },
   fullScreenPausedText: {
     fontSize: 24,
