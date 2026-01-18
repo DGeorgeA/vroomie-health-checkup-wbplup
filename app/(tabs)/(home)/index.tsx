@@ -19,9 +19,11 @@ export default function DashboardScreen() {
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [highContrast, setHighContrast] = useState(false);
+  const [voiceMuted, setVoiceMuted] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
 
   useEffect(() => {
+    console.log('Dashboard screen loaded');
     loadSettings();
     loadSessions();
   }, []);
@@ -30,10 +32,12 @@ export default function DashboardScreen() {
     const savedRotation = await AsyncStorage.getItem('logoRotationDisabled');
     const savedMotion = await AsyncStorage.getItem('reduceMotion');
     const savedContrast = await AsyncStorage.getItem('highContrast');
+    const savedVoiceMuted = await AsyncStorage.getItem('voiceMuted');
     
     if (savedRotation) setLogoRotationDisabled(JSON.parse(savedRotation));
     if (savedMotion) setReduceMotion(JSON.parse(savedMotion));
     if (savedContrast) setHighContrast(JSON.parse(savedContrast));
+    if (savedVoiceMuted) setVoiceMuted(JSON.parse(savedVoiceMuted));
   };
 
   const loadSessions = async () => {
@@ -45,20 +49,30 @@ export default function DashboardScreen() {
 
   const toggleLogoRotation = async () => {
     const newValue = !logoRotationDisabled;
+    console.log(`Logo rotation ${newValue ? 'disabled' : 'enabled'}`);
     setLogoRotationDisabled(newValue);
     await AsyncStorage.setItem('logoRotationDisabled', JSON.stringify(newValue));
   };
 
   const toggleReduceMotion = async () => {
     const newValue = !reduceMotion;
+    console.log(`Reduce motion ${newValue ? 'enabled' : 'disabled'}`);
     setReduceMotion(newValue);
     await AsyncStorage.setItem('reduceMotion', JSON.stringify(newValue));
   };
 
   const toggleHighContrast = async () => {
     const newValue = !highContrast;
+    console.log(`High contrast ${newValue ? 'enabled' : 'disabled'}`);
     setHighContrast(newValue);
     await AsyncStorage.setItem('highContrast', JSON.stringify(newValue));
+  };
+
+  const toggleVoiceMuted = async () => {
+    const newValue = !voiceMuted;
+    console.log(`Voice announcements ${newValue ? 'muted' : 'enabled'}`);
+    setVoiceMuted(newValue);
+    await AsyncStorage.setItem('voiceMuted', JSON.stringify(newValue));
   };
 
   const totalSessions = sessions.length;
@@ -81,7 +95,10 @@ export default function DashboardScreen() {
           <Text style={styles.topBarTitle}>#1 Remote Car Health Check-Up</Text>
           <TouchableOpacity
             style={styles.settingsButton}
-            onPress={() => setSettingsVisible(true)}
+            onPress={() => {
+              console.log('User opened settings');
+              setSettingsVisible(true);
+            }}
             accessibilityLabel="Settings"
             accessibilityRole="button"
           >
@@ -107,7 +124,10 @@ export default function DashboardScreen() {
           <View style={styles.ctaContainer}>
             <TouchableOpacity
               style={styles.primaryCta}
-              onPress={() => router.push('/health-checkup')}
+              onPress={() => {
+                console.log('User tapped Start Health CheckUp');
+                router.push('/health-checkup');
+              }}
               activeOpacity={0.8}
               accessibilityLabel="Start Health CheckUp"
               accessibilityRole="button"
@@ -130,7 +150,10 @@ export default function DashboardScreen() {
 
             <TouchableOpacity
               style={styles.secondaryCta}
-              onPress={() => router.push('/reports')}
+              onPress={() => {
+                console.log('User tapped View Reports');
+                router.push('/reports');
+              }}
               activeOpacity={0.8}
               accessibilityLabel="View Reports"
               accessibilityRole="button"
@@ -200,7 +223,10 @@ export default function DashboardScreen() {
           {!adminLoading && isAdmin && (
             <TouchableOpacity
               style={styles.mockupsButton}
-              onPress={() => router.push('/mockups')}
+              onPress={() => {
+                console.log('Admin navigating to Play Store Assets');
+                router.push('/mockups');
+              }}
               activeOpacity={0.8}
               accessibilityLabel="Play Store Assets"
               accessibilityRole="button"
@@ -250,7 +276,10 @@ export default function DashboardScreen() {
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Settings</Text>
                 <TouchableOpacity
-                  onPress={() => setSettingsVisible(false)}
+                  onPress={() => {
+                    console.log('User closed settings');
+                    setSettingsVisible(false);
+                  }}
                   style={styles.modalClose}
                   accessibilityLabel="Close settings"
                   accessibilityRole="button"
@@ -261,6 +290,23 @@ export default function DashboardScreen() {
                     size={28}
                     color={colors.textSecondary}
                   />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Mute Voice Announcements</Text>
+                  <Text style={styles.settingDescription}>
+                    Disable voice alerts for detected anomalies
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.toggle, voiceMuted && styles.toggleActive]}
+                  onPress={toggleVoiceMuted}
+                  accessibilityLabel={`Voice announcements ${voiceMuted ? 'muted' : 'enabled'}`}
+                  accessibilityRole="switch"
+                >
+                  <View style={[styles.toggleThumb, voiceMuted && styles.toggleThumbActive]} />
                 </TouchableOpacity>
               </View>
 

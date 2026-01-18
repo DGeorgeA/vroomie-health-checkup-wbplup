@@ -1,5 +1,5 @@
 # Vroomie Health
 
-This app was built by a Thoughtful Monk
+This app was built using [Natively.dev](https://natively.dev) - a platform for creating mobile apps.
 
-Wait for the monk to change the future of Auto Maintenenace
+Made with 💙 for creativity.

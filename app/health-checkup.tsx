@@ -26,6 +26,7 @@ import {
   setAudioModeAsync,
   requestRecordingPermissionsAsync,
 } from 'expo-audio';
+import * as Speech from 'expo-speech';
 import { Session, Anomaly, AnomalyPattern } from '@/types/entities';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/app/integrations/supabase/client';
@@ -42,12 +43,14 @@ export default function HealthCheckUpScreen() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
   const [logoRotationDisabled, setLogoRotationDisabled] = useState(false);
+  const [voiceMuted, setVoiceMuted] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [showSuccessPanel, setShowSuccessPanel] = useState(false);
   const [permissionError, setPermissionError] = useState(false);
   const [detectedAnomalyName, setDetectedAnomalyName] = useState<string | null>(null);
   const [showBanner, setShowBanner] = useState(false);
+  const [isAutoStarting, setIsAutoStarting] = useState(false);
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(audioRecorder);
@@ -55,16 +58,32 @@ export default function HealthCheckUpScreen() {
   const fullScreenAnim = useRef(new Animated.Value(0)).current;
   const bannerAnim = useRef(new Animated.Value(0)).current;
   const backPressCount = useRef(0);
+  const announcedAnomalies = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    console.log('Health CheckUp screen loaded');
     requestPermissions();
     loadSettings();
   }, []);
 
+  useEffect(() => {
+    // Auto-start recording when permissions are granted
+    if (hasPermission && !isRecording && !isAutoStarting && !permissionError) {
+      console.log('Auto-starting recording after permission granted');
+      setIsAutoStarting(true);
+      startRecording();
+    }
+  }, [hasPermission, isRecording, permissionError]);
+
   const loadSettings = async () => {
-    const saved = await AsyncStorage.getItem('logoRotationDisabled');
-    if (saved) {
-      setLogoRotationDisabled(JSON.parse(saved));
+    const savedRotation = await AsyncStorage.getItem('logoRotationDisabled');
+    const savedVoiceMuted = await AsyncStorage.getItem('voiceMuted');
+    
+    if (savedRotation) {
+      setLogoRotationDisabled(JSON.parse(savedRotation));
+    }
+    if (savedVoiceMuted) {
+      setVoiceMuted(JSON.parse(savedVoiceMuted));
     }
   };
 
@@ -82,8 +101,10 @@ export default function HealthCheckUpScreen() {
 
   const requestPermissions = async () => {
     try {
+      console.log('Requesting microphone permissions');
       const { granted } = await requestRecordingPermissionsAsync();
       if (granted) {
+        console.log('Microphone permission granted');
         setHasPermission(true);
         setPermissionError(false);
         await setAudioModeAsync({
@@ -91,6 +112,7 @@ export default function HealthCheckUpScreen() {
           allowsRecording: true,
         });
       } else {
+        console.log('Microphone permission denied');
         setHasPermission(false);
         setPermissionError(true);
       }
@@ -100,7 +122,36 @@ export default function HealthCheckUpScreen() {
     }
   };
 
+  const speakAnomaly = async (anomalyName: string) => {
+    if (voiceMuted) {
+      console.log('Voice muted, skipping announcement');
+      return;
+    }
+
+    // Check if we've already announced this anomaly
+    if (announcedAnomalies.current.has(anomalyName)) {
+      console.log(`Already announced ${anomalyName}, skipping`);
+      return;
+    }
+
+    console.log(`Speaking anomaly: ${anomalyName}`);
+    announcedAnomalies.current.add(anomalyName);
+
+    const message = `Suspecting ${anomalyName}. Seek a mechanic consultation. Go Vroomie!`;
+    
+    try {
+      await Speech.speak(message, {
+        language: 'en-US',
+        pitch: 1.0,
+        rate: 0.9,
+      });
+    } catch (error) {
+      console.error('Error speaking anomaly:', error);
+    }
+  };
+
   const startCountdown = () => {
+    console.log('Starting countdown');
     setCountdown(3);
     const countdownInterval = setInterval(() => {
       setCountdown((prev) => {
@@ -116,24 +167,29 @@ export default function HealthCheckUpScreen() {
 
   const startRecordingAfterCountdown = async () => {
     try {
+      console.log('Starting recording after countdown');
       await audioRecorder.prepareToRecordAsync();
       audioRecorder.record();
       recordingStartTime.current = Date.now();
       setIsRecording(true);
       setIsPaused(false);
-      console.log('Recording started');
+      console.log('Recording started successfully');
     } catch (error) {
       console.error('Error starting recording:', error);
       Alert.alert('Error', 'Failed to start recording. Please try again.');
       setIsFullScreen(false);
+      setIsAutoStarting(false);
     }
   };
 
   const startRecording = async () => {
     if (!hasPermission) {
+      console.log('No permission, requesting again');
       await requestPermissions();
       return;
     }
+
+    console.log('User tapped Start Health Checkup - starting recording immediately');
 
     if (IS_MOBILE) {
       setIsFullScreen(true);
@@ -145,14 +201,17 @@ export default function HealthCheckUpScreen() {
       }).start();
     }
 
+    // Reset announced anomalies for new session
+    announcedAnomalies.current.clear();
+
     startCountdown();
   };
 
   const pauseRecording = async () => {
     try {
+      console.log('User paused recording');
       await audioRecorder.pause();
       setIsPaused(true);
-      console.log('Recording paused');
     } catch (error) {
       console.error('Error pausing recording:', error);
     }
@@ -160,9 +219,9 @@ export default function HealthCheckUpScreen() {
 
   const resumeRecording = async () => {
     try {
+      console.log('User resumed recording');
       audioRecorder.record();
       setIsPaused(false);
-      console.log('Recording resumed');
     } catch (error) {
       console.error('Error resuming recording:', error);
     }
@@ -170,10 +229,10 @@ export default function HealthCheckUpScreen() {
 
   const stopRecording = async () => {
     try {
+      console.log('User stopped recording');
       await audioRecorder.stop();
       setIsRecording(false);
       setIsPaused(false);
-      console.log('Recording stopped');
       await saveAnalysis();
     } catch (error) {
       console.error('Error stopping recording:', error);
@@ -200,9 +259,11 @@ export default function HealthCheckUpScreen() {
       const threshold = 50;
       if (anomalyScore >= threshold && patterns.length > 0) {
         const randomPattern = patterns[Math.floor(Math.random() * patterns.length)];
+        console.log(`Pattern matched: ${randomPattern.anomaly_name}`);
         return randomPattern.anomaly_name;
       }
 
+      console.log('No anomaly detected (score below threshold)');
       return null;
     } catch (error) {
       console.error('Error in pattern matching:', error);
@@ -216,6 +277,7 @@ export default function HealthCheckUpScreen() {
       return;
     }
 
+    console.log('Saving analysis...');
     setIsSaving(true);
 
     try {
@@ -272,7 +334,13 @@ export default function HealthCheckUpScreen() {
       sessions.unshift(newSession);
       await AsyncStorage.setItem('sessions', JSON.stringify(sessions));
 
+      console.log('Analysis saved successfully');
       setDetectedAnomalyName(matchedAnomaly);
+      
+      // Speak the anomaly if detected
+      if (matchedAnomaly) {
+        await speakAnomaly(matchedAnomaly);
+      }
       
       setTimeout(() => {
         setIsSaving(false);
@@ -319,6 +387,7 @@ export default function HealthCheckUpScreen() {
   };
 
   const handleBack = () => {
+    console.log('User tapped back button');
     if (isFullScreen) {
       if (backPressCount.current === 0) {
         backPressCount.current = 1;
@@ -350,6 +419,7 @@ export default function HealthCheckUpScreen() {
   };
 
   const exitFullScreen = () => {
+    console.log('Exiting full screen mode');
     Animated.timing(fullScreenAnim, {
       toValue: 0,
       duration: 300,
@@ -358,10 +428,12 @@ export default function HealthCheckUpScreen() {
       setIsFullScreen(false);
       setShowBanner(false);
       bannerAnim.setValue(0);
+      setIsAutoStarting(false);
     });
   };
 
   const handleViewReport = () => {
+    console.log('User navigating to reports');
     setShowSuccessPanel(false);
     setShowBanner(false);
     bannerAnim.setValue(0);
@@ -370,6 +442,7 @@ export default function HealthCheckUpScreen() {
   };
 
   const handleReturnHome = () => {
+    console.log('User returning to home');
     setShowSuccessPanel(false);
     setShowBanner(false);
     bannerAnim.setValue(0);
@@ -663,6 +736,42 @@ export default function HealthCheckUpScreen() {
     );
   }
 
+  // Show loading state while auto-starting
+  if (isAutoStarting && !isFullScreen) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#18181B', '#27272a', '#18181B']}
+          style={styles.gradient}
+        >
+          <View style={styles.topBar}>
+            <VroomieLogo size={48} disableRotation={logoRotationDisabled} />
+            <Text style={styles.topBarTitle}>#1 Remote Car Health Check-Up</Text>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={handleBack}
+              accessibilityLabel="Go back"
+              accessibilityRole="button"
+            >
+              <IconSymbol
+                ios_icon_name="chevron.left"
+                android_material_icon_name="arrow-back"
+                size={20}
+                color={colors.primary}
+              />
+              <Text style={styles.backText}>Back</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.loadingContainer}>
+            <VroomieLogo size={80} disableRotation={false} />
+            <Text style={styles.loadingText}>Starting Health CheckUp...</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -694,7 +803,7 @@ export default function HealthCheckUpScreen() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.title}>Health CheckUp</Text>
-          <Text style={styles.subtitle}>Record your engine audio for AI analysis</Text>
+          <Text style={styles.subtitle}>Recording will start automatically</Text>
 
           <BlurView intensity={20} style={styles.waveformContainer}>
             <View style={styles.waveformContent}>
@@ -733,38 +842,13 @@ export default function HealthCheckUpScreen() {
               )}
 
               {!isRecording && (
-                <Text style={styles.waveformHint}>Press Start Recording to begin</Text>
+                <Text style={styles.waveformHint}>Preparing to record...</Text>
               )}
             </View>
           </BlurView>
 
-          <View style={styles.controls}>
-            {!isRecording ? (
-              <TouchableOpacity
-                style={styles.recordButton}
-                onPress={startRecording}
-                disabled={!hasPermission}
-                accessibilityLabel="Start recording"
-                accessibilityRole="button"
-              >
-                <BlurView intensity={30} style={styles.recordButtonBlur}>
-                  <LinearGradient
-                    colors={['rgba(252, 211, 77, 0.3)', 'rgba(252, 211, 77, 0.1)']}
-                    style={styles.recordButtonGradient}
-                  >
-                    <IconSymbol
-                      ios_icon_name="mic.circle.fill"
-                      android_material_icon_name="mic"
-                      size={56}
-                      color={hasPermission ? colors.primary : colors.textSecondary}
-                    />
-                    <Text style={styles.recordButtonText}>
-                      {hasPermission ? 'Start Recording' : 'Permission Required'}
-                    </Text>
-                  </LinearGradient>
-                </BlurView>
-              </TouchableOpacity>
-            ) : (
+          {isRecording && (
+            <View style={styles.controls}>
               <View style={styles.activeControls}>
                 {!isPaused ? (
                   <TouchableOpacity
@@ -822,8 +906,8 @@ export default function HealthCheckUpScreen() {
                   </BlurView>
                 </TouchableOpacity>
               </View>
-            )}
-          </View>
+            </View>
+          )}
 
           <BlurView intensity={20} style={styles.instructionsCard}>
             <View style={styles.instructionsContent}>
@@ -1092,29 +1176,6 @@ const styles = StyleSheet.create({
   controls: {
     marginBottom: 24,
   },
-  recordButton: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  recordButtonBlur: {
-    borderWidth: 2,
-    borderColor: 'rgba(252, 211, 77, 0.5)',
-  },
-  recordButtonGradient: {
-    padding: 32,
-    alignItems: 'center',
-    gap: 16,
-  },
-  recordButtonText: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: colors.text,
-  },
   activeControls: {
     flexDirection: 'row',
     gap: 12,
@@ -1186,6 +1247,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 24,
+  },
+  loadingText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.primary,
   },
   fullScreenContainer: {
     flex: 1,
